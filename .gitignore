@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+.claude/settings.local.json
+
+# Earshot product go-to-market docs — kept local, NOT published (public repo)
+docs/product/
