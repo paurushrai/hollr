@@ -8,3 +8,7 @@ htmlcov/
 
 # Earshot product go-to-market docs — kept local, NOT published (public repo)
 docs/product/
+
+# Internal design specs + SDD planning/scratch — kept local, NOT published
+docs/superpowers/
+.superpowers/
