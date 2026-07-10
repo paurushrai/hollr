@@ -1,0 +1,11 @@
+{
+  "name": "hollr-marketplace",
+  "owner": { "name": "Paurush Rai" },
+  "plugins": [
+    {
+      "name": "hollr",
+      "source": "./",
+      "description": "Voice + notification awareness for Claude Code: hollers when the agent is done or needs your input."
+    }
+  ]
+}
