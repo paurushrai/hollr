@@ -1,0 +1,8 @@
+{
+  "session_id": "sess_01HZ8QAP",
+  "transcript_path": "/Users/me/.gemini/tmp/9f2c1a/chats/session.jsonl",
+  "cwd": "/Users/me/dev/other-app",
+  "hook_event_name": "Notification",
+  "timestamp": "2026-07-11T10:05:00.000Z",
+  "message": "Gemini needs your permission to run a shell command."
+}

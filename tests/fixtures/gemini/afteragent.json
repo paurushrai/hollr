@@ -1,0 +1,10 @@
+{
+  "session_id": "sess_01HZ8QAP",
+  "transcript_path": "/Users/me/.gemini/tmp/9f2c1a/chats/session.jsonl",
+  "cwd": "/Users/me/dev/my-app",
+  "hook_event_name": "AfterAgent",
+  "timestamp": "2026-07-11T10:00:00.000Z",
+  "prompt": "Rename foo to bar across the repo.",
+  "prompt_response": "Renamed `foo` to `bar` in 4 files and verified the build passes.",
+  "stop_hook_active": false
+}
