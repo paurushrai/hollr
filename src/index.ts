@@ -11,6 +11,7 @@
 
 import { fileURLToPath } from "node:url";
 
+import { adapters } from "./adapters/registry.ts";
 import { pauseReading, resumeReading, stopReading } from "./core/control.ts";
 import { allRequiredOk, checkAll, type Check } from "./core/doctor.ts";
 import type { EmitDeps } from "./cli/emit.ts";
@@ -101,7 +102,7 @@ async function runDoctor(): Promise<number> {
   const checks = await checkAll({
     which: whichOnPath,
     platform: selectPlatform(),
-    adapters: [],
+    adapters,
   });
   for (const check of checks) {
     printCheck(check);

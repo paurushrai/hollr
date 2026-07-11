@@ -8,6 +8,7 @@
  * this in a top-level try/catch that forces exit 0.
  */
 
+import { byId } from "../adapters/registry.ts";
 import type { EventName } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
@@ -121,9 +122,9 @@ function stringField(value: unknown, fallback: string): string {
 }
 
 /**
- * Generic normalizer used until per-agent adapters land (T9): the agent id
- * doubles as the title, `cwd` comes from the payload or the process, and the
- * summary prefers the `--summary` flag over the payload.
+ * Generic normalizer, used when no registered adapter claims `flags.agent`: the
+ * agent id doubles as the title, `cwd` comes from the payload or the process,
+ * and the summary prefers the `--summary` flag over the payload.
  */
 export function buildEmitEvent(
   flags: EmitFlags,
@@ -146,11 +147,34 @@ export function buildEmitEvent(
   };
 }
 
+/**
+ * Normalize an emit into an event: a registered adapter for `flags.agent`
+ * claims it (and may decline with `null`); an unknown id falls back to the
+ * built-in {@link buildEmitEvent} generic normalizer.
+ */
+function normalizeEmit(
+  flags: EmitFlags,
+  payload: Record<string, unknown>,
+  now: Date,
+): HollrEvent | null {
+  const adapter = byId(flags.agent);
+  if (adapter === undefined) {
+    return buildEmitEvent(flags, payload, now);
+  }
+  return adapter.normalize(payload, flags.event as EventName);
+}
+
+/** Exit code for a successful emit that produced no event to route. */
+const EXIT_NO_EVENT = 0;
+
 /** Parse, normalize, and route an emit; returns the router's exit code. */
 export async function runEmit(args: string[], deps: EmitDeps): Promise<number> {
   const flags = parseEmitFlags(args);
   const payload = parseJsonObject(await resolvePayloadRaw(flags, deps));
-  const event = buildEmitEvent(flags, payload, new Date());
+  const event = normalizeEmit(flags, payload, new Date());
+  if (event === null) {
+    return EXIT_NO_EVENT;
+  }
   return route(
     event,
     loadConfig(event.cwd),
