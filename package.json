@@ -1,7 +1,7 @@
 {
   "name": "hollr-cli",
   "version": "0.2.0",
-  "description": "Voice, notification, and webhook awareness for CLI coding agents — hollers when your agent is done or needs you.",
+  "description": "Voice, notification, and webhook awareness for CLI coding agents — shouts when your agent finishes or needs you.",
   "type": "module",
   "bin": {
     "hollr": "dist/index.js"

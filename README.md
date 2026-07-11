@@ -1,6 +1,6 @@
 # hollr
 
-**hollr hollers when your CLI coding agent finishes or needs you.**
+**hollr shouts when your CLI coding agent finishes or needs you.**
 
 You kick off a long agent run, switch to something else, and lose track of
 when it's done — or when it stalled waiting on your input. hollr closes that
