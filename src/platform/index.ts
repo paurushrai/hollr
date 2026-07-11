@@ -47,9 +47,10 @@ export interface Platform {
  * Locate `bin` on `PATH`, returning its absolute path or `null`. A minimal
  * dependency-free `which`: it scans `PATH` entries for an executable file (and
  * `PATHEXT` variants on Windows). Engines inject a fake in tests, so this only
- * runs in production via {@link selectPlatform}.
+ * runs in production via {@link selectPlatform}; the doctor command reuses it as
+ * its real `which`.
  */
-function whichOnPath(bin: string): string | null {
+export function whichOnPath(bin: string): string | null {
   const pathEnv = process.env.PATH;
   if (pathEnv === undefined || pathEnv.length === 0) {
     return null;
