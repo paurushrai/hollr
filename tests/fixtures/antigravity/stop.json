@@ -1,0 +1,11 @@
+{
+  "conversationId": "conv_01HXYZ",
+  "executionId": "exec_42",
+  "executionNum": 42,
+  "workspacePaths": ["/Users/me/dev/my-app"],
+  "transcriptPath": "/Users/me/.gemini/antigravity-ide/transcripts/conv_01HXYZ.db",
+  "artifactDirectoryPath": "/Users/me/.gemini/artifacts/exec_42",
+  "modelName": "gemini-2.0-flash",
+  "terminationReason": "model_stop",
+  "fullyIdle": true
+}
