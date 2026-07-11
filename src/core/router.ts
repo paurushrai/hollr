@@ -8,7 +8,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { HollrConfig } from "./config.ts";
-import { hollrHome, inQuietHours, isConfigured, isMuted } from "./config.ts";
+import {
+  hollrHome,
+  inQuietHours,
+  isConfigured,
+  isMuted,
+  isProjectEnabled,
+  quietActive,
+} from "./config.ts";
 import type { EventName } from "./config.ts";
 import type { HollrEvent } from "./events.ts";
 import { prepareSpeechText } from "./events.ts";
@@ -47,11 +54,21 @@ export function route(
   now: Date,
 ): number {
   try {
+    if (quietActive(now)) {
+      return EXIT_OK;
+    }
     if (isMuted(ev.cwd)) {
       return EXIT_OK;
     }
     if (!isConfigured(ev.cwd)) {
       return showHintOnce();
+    }
+    if (isProjectEnabled(ev.cwd)) {
+      dispatchRouted(ev, cfg, deps, now);
+      return EXIT_OK;
+    }
+    if (cfg.activation === "opt-in") {
+      return EXIT_OK;
     }
     dispatchRouted(ev, cfg, deps, now);
     return EXIT_OK;

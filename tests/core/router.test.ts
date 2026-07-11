@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HollrConfig } from "../../src/core/config.ts";
-import { encodeCwd, loadConfig } from "../../src/core/config.ts";
+import { DEFAULTS, encodeCwd, loadConfig, quietUntilPath } from "../../src/core/config.ts";
 import type { HollrEvent } from "../../src/core/events.ts";
 import { projectLabel } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
@@ -51,6 +51,26 @@ function touchMute(cwd: string): void {
   const dir = join(hollrHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.muted`), "");
+}
+
+function touchEnabled(cwd: string): void {
+  const dir = join(hollrHomeDir, "projects");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${encodeCwd(cwd)}.enabled`), "");
+}
+
+function setQuietUntil(value: string): void {
+  mkdirSync(hollrHomeDir, { recursive: true });
+  writeFileSync(quietUntilPath(), value);
+}
+
+function fired(mocks: Mocks): boolean {
+  return (
+    mocks.speak.mock.calls.length +
+      mocks.notify.mock.calls.length +
+      mocks.webhooks.mock.calls.length >
+    0
+  );
 }
 
 function fakePlatform(overrides: Partial<Platform> = {}): Platform {
@@ -357,5 +377,56 @@ describe("route: notifyArgv null", () => {
     const { deps, notify } = makeDeps(fakePlatform({ notifyArgv: () => null }));
     route(makeEvent(), cfg, deps, NOW);
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe("route: precedence — quiet, mute, opt-in gate", () => {
+  it("should_stay_silent_when_a_temporary_quiet_is_active", () => {
+    const cfg = configure();
+    setQuietUntil("indefinite");
+    const mocks = makeDeps();
+    const code = route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(code).toBe(0);
+    expect(fired(mocks)).toBe(false);
+  });
+
+  it("should_stay_silent_when_the_project_is_muted", () => {
+    const cfg = configure();
+    touchMute(CWD);
+    const mocks = makeDeps();
+    route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(fired(mocks)).toBe(false);
+  });
+
+  it("should_fire_when_the_project_is_explicitly_enabled_under_opt_in", () => {
+    const cfg = configure({ activation: "opt-in" });
+    touchEnabled(CWD);
+    const mocks = makeDeps();
+    route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(fired(mocks)).toBe(true);
+  });
+
+  it("should_stay_silent_under_opt_in_when_the_project_is_not_enabled", () => {
+    const cfg = configure({ activation: "opt-in" });
+    const mocks = makeDeps();
+    route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(fired(mocks)).toBe(false);
+  });
+
+  it("should_fire_by_default_under_activation_all", () => {
+    const cfg = configure();
+    expect(cfg.activation).toBe(DEFAULTS.activation);
+    const mocks = makeDeps();
+    route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(fired(mocks)).toBe(true);
+  });
+
+  it("should_let_mute_beat_enable", () => {
+    const cfg = configure({ activation: "opt-in" });
+    touchMute(CWD);
+    touchEnabled(CWD);
+    const mocks = makeDeps();
+    route(makeEvent(), cfg, mocks.deps, NOW);
+    expect(fired(mocks)).toBe(false);
   });
 });
