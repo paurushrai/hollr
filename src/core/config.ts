@@ -20,6 +20,7 @@ export type EventName = "done" | "blocked" | "error";
 export type Mode = "announce" | "readaloud" | "notify" | "silent";
 export type WebhookProvider = "ntfy" | "pushover" | "slack" | "generic";
 export type QuietHoursWebhooks = "fire" | "suppress";
+export type Activation = "all" | "opt-in";
 
 export interface EventConfig {
   mode: Mode;
@@ -50,6 +51,7 @@ export interface WebhookTarget {
 
 export interface HollrConfig {
   version: number;
+  activation: Activation;
   events: Record<EventName, EventConfig>;
   voice: VoiceConfig;
   notify: NotifyConfig;
@@ -66,6 +68,7 @@ const DEFAULT_MAX_CHARS = 1200;
 
 export const DEFAULTS: HollrConfig = {
   version: SCHEMA_VERSION,
+  activation: "all",
   events: {
     done: { mode: "announce" },
     blocked: { mode: "announce" },
@@ -91,6 +94,10 @@ const NESTED_KEYS: ReadonlySet<string> = new Set([
 const NON_ALNUM = /[^A-Za-z0-9]/g;
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MINUTES_PER_HOUR = 60;
+const ENABLED_SUFFIX = ".enabled";
+const QUIET_UNTIL_FILE = "quiet-until";
+const QUIET_INDEFINITE = "indefinite";
+const INTEGER_RE = /^-?\d+$/;
 
 /** `$HOLLR_HOME` if set, else `~/.config/hollr`. */
 export function hollrHome(): string {
@@ -178,6 +185,41 @@ export function isConfigured(cwd: string): boolean {
 
 export function isMuted(cwd: string): boolean {
   return isFile(muteFlagPath(cwd));
+}
+
+function projectEnabledFlagPath(cwd: string): string {
+  return join(hollrHome(), "projects", `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
+}
+
+/** True when this project has an explicit on-marker (overrides opt-in default). */
+export function isProjectEnabled(cwd: string): boolean {
+  return isFile(projectEnabledFlagPath(cwd));
+}
+
+/** Path to the global temporary-quiet marker (transient state, not config). */
+export function quietUntilPath(): string {
+  return join(hollrHome(), QUIET_UNTIL_FILE);
+}
+
+/**
+ * True while a temporary quiet is in effect. The marker holds either
+ * `indefinite` or an epoch-ms expiry. Missing, elapsed, or malformed markers
+ * read as inactive — never throws, so it is safe to call from the router hook.
+ */
+export function quietActive(now: Date): boolean {
+  let raw: string;
+  try {
+    raw = readFileSync(quietUntilPath(), "utf8").trim();
+  } catch {
+    return false;
+  }
+  if (raw === QUIET_INDEFINITE) {
+    return true;
+  }
+  if (!INTEGER_RE.test(raw)) {
+    return false;
+  }
+  return now.getTime() < Number.parseInt(raw, 10);
 }
 
 function toMinutes(part: string): number | null {

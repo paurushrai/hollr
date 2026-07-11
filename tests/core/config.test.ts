@@ -11,11 +11,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULTS,
   encodeCwd,
+  hollrHome,
   inQuietHours,
   isConfigured,
+  isProjectEnabled,
   isMuted,
   loadConfig,
   migrateV1,
+  quietActive,
+  quietUntilPath,
 } from "../../src/core/config.ts";
 
 const PROJECT = "/some/project";
@@ -240,5 +244,57 @@ describe("migrateV1", () => {
       result = migrateV1();
     }).not.toThrow();
     expect(result).toBe(false);
+  });
+});
+
+describe("activation default", () => {
+  it("defaults activation to 'all' when absent from the config file", () => {
+    mkdirSync(hollrHome(), { recursive: true });
+    writeFileSync(join(hollrHome(), "config.json"), JSON.stringify({ version: 2 }));
+    expect(loadConfig("/tmp/proj").activation).toBe("all");
+  });
+  it("reads an explicit opt-in activation", () => {
+    mkdirSync(hollrHome(), { recursive: true });
+    writeFileSync(join(hollrHome(), "config.json"), JSON.stringify({ activation: "opt-in" }));
+    expect(loadConfig("/tmp/proj").activation).toBe("opt-in");
+  });
+});
+
+describe("isProjectEnabled", () => {
+  it("is false when no .enabled marker exists", () => {
+    expect(isProjectEnabled("/tmp/proj")).toBe(false);
+  });
+  it("is true when the .enabled marker exists", () => {
+    const dir = join(hollrHome(), "projects");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${encodeCwd("/tmp/proj")}.enabled`), "");
+    expect(isProjectEnabled("/tmp/proj")).toBe(true);
+  });
+});
+
+describe("quietActive", () => {
+  const now = new Date("2026-07-12T12:00:00Z");
+  const writeQuiet = (body: string) => {
+    mkdirSync(hollrHome(), { recursive: true });
+    writeFileSync(quietUntilPath(), body);
+  };
+  it("is false when no quiet-until marker exists", () => {
+    expect(quietActive(now)).toBe(false);
+  });
+  it("is true for an indefinite quiet", () => {
+    writeQuiet("indefinite");
+    expect(quietActive(now)).toBe(true);
+  });
+  it("is true when the expiry is in the future", () => {
+    writeQuiet(String(now.getTime() + 60_000));
+    expect(quietActive(now)).toBe(true);
+  });
+  it("is false when the expiry has elapsed", () => {
+    writeQuiet(String(now.getTime() - 1));
+    expect(quietActive(now)).toBe(false);
+  });
+  it("is false for a garbage marker", () => {
+    writeQuiet("not-a-number");
+    expect(quietActive(now)).toBe(false);
   });
 });
