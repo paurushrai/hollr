@@ -262,4 +262,30 @@ describe("checkAll — adapters (informational)", () => {
     // Only node + 3 darwin binaries, no adapter checks.
     expect(checks).toHaveLength(4);
   });
+
+  it("should_pass_a_working_adapter_deps_home_to_detect", async () => {
+    let seenHome: string | undefined;
+    let seenWhich: ((bin: string) => string | null) | undefined;
+    // Real adapters read deps.home/deps.which; a probe with no args would throw
+    // and be reported "not installed". This proves detect receives real deps.
+    const depsProbe: DetectableAgent = {
+      id: "probe",
+      title: "Probe",
+      detect: (deps) => {
+        seenHome = deps.home;
+        seenWhich = deps.which;
+        return Promise.resolve({ installed: deps.which("probe-bin") !== null });
+      },
+    };
+    const checks = await checkAll({
+      which: whichWith("probe-bin"),
+      platform: selectPlatform("darwin"),
+      nodeVersion: NODE_OK,
+      adapters: [depsProbe],
+      home: "/tmp/injected-home",
+    });
+    expect(seenHome).toBe("/tmp/injected-home");
+    expect(seenWhich).toBeTypeOf("function");
+    expect(byKey(checks, "probe")?.ok).toBe(true);
+  });
 });

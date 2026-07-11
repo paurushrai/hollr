@@ -140,7 +140,7 @@ describe("runEmit drives route", () => {
       deps,
     );
     expect(code).toBe(0);
-    expect(spokenText(speak)).toBe("claude-code response is ready in my app");
+    expect(spokenText(speak)).toBe("Claude Code response is ready in my app");
     expect(notify).toHaveBeenCalledTimes(1);
     const logLine = readFileSync(join(hollrHomeDir, "events.log"), "utf8").trim();
     expect(logLine).toContain("claude-code done my app");
@@ -161,7 +161,7 @@ describe("runEmit drives route", () => {
       deps,
     );
     expect(code).toBe(0);
-    expect(spokenText(speak)).toBe("claude-code needs your input in my app");
+    expect(spokenText(speak)).toBe("Claude Code needs your input in my app");
   });
 
   it("should_return_0_and_not_throw_on_malformed_stdin", async () => {

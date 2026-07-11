@@ -9,6 +9,9 @@
  * throwing adapter probe rather than crashing.
  */
 
+import { homedir } from "node:os";
+
+import type { AdapterDeps } from "../adapters/types.ts";
 import type { Platform } from "../platform/index.ts";
 
 /** One prerequisite's result. */
@@ -35,7 +38,7 @@ export interface Check {
 export interface DetectableAgent {
   id: string;
   title: string;
-  detect(deps?: unknown): Promise<{ installed: boolean; degraded?: string }>;
+  detect(deps: AdapterDeps): Promise<{ installed: boolean; degraded?: string }>;
 }
 
 /** Minimum supported Node.js major version. */
@@ -100,11 +103,14 @@ function checkBinaries(
   });
 }
 
-async function checkAdapter(agent: DetectableAgent): Promise<Check> {
+async function checkAdapter(
+  agent: DetectableAgent,
+  deps: AdapterDeps,
+): Promise<Check> {
   let ok = false;
   let detail = "not installed";
   try {
-    const result = await agent.detect();
+    const result = await agent.detect(deps);
     ok = result.installed;
     if (result.installed) {
       detail =
@@ -125,10 +131,16 @@ export async function checkAll(deps: {
   platform: Platform;
   adapters?: DetectableAgent[];
   nodeVersion?: string;
+  /** User home for adapter detection; defaults to the real home dir. */
+  home?: string;
 }): Promise<Check[]> {
   const nodeVersion = deps.nodeVersion ?? process.versions.node;
+  const adapterDeps: AdapterDeps = {
+    home: deps.home ?? homedir(),
+    which: deps.which,
+  };
   const adapterChecks = await Promise.all(
-    (deps.adapters ?? []).map((agent) => checkAdapter(agent)),
+    (deps.adapters ?? []).map((agent) => checkAdapter(agent, adapterDeps)),
   );
   return [
     checkNode(nodeVersion),

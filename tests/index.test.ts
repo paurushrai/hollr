@@ -103,9 +103,11 @@ describe("run: mute dispatch", () => {
 describe("run: emit never breaks the agent", () => {
   it("should_return_0_for_a_muted_project_without_spawning", async () => {
     captureStdout();
-    // Mute the cwd so route returns early (no real speak/notify spawn).
+    // Mute the cwd so route returns early (no real speak/notify spawn). Uses an
+    // unregistered agent id so the generic normalizer falls cwd back to the
+    // process cwd we just muted (a real adapter takes cwd from its payload).
     await run(["mute", "on"]);
-    const code = await run(["emit", "--agent", "claude-code", "--event", "done"]);
+    const code = await run(["emit", "--agent", "generic-agent", "--event", "done"]);
     expect(code).toBe(0);
   });
 
