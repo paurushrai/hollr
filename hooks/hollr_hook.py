@@ -48,7 +48,7 @@ def _deliver(mode: str, line: str, spoken: str, cfg: dict, quiet: bool) -> None:
     voice = cfg.get("voice", {})
     desktop = bool(cfg.get("notify", {}).get("desktop", True))
     if mode in ("announce", "readaloud") and not quiet:
-        speech.speak(spoken, voice=voice.get("name", "Samantha"),
+        speech.speak(spoken, voice=voice.get("name"),
                      rate_wpm=voice.get("rate_wpm", 190))
     if mode == "notify" or ((mode in ("announce", "readaloud")) and desktop):
         speech.notify(TITLE, line)

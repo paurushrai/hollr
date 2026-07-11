@@ -35,7 +35,7 @@ def test_speak_empty_text_is_noop():
 def test_speak_caps_text_length():
     with patch.object(subprocess, "Popen") as mock_popen:
         speech.speak("a" * 10_000)
-    assert len(_popen_argv(mock_popen)[6]) == speech.MAX_SPEECH_CHARS
+    assert len(_popen_argv(mock_popen)[-1]) == speech.MAX_SPEECH_CHARS
 
 
 def test_notify_builds_osascript_argv():
@@ -65,9 +65,20 @@ def test_speak_tolerates_non_numeric_rate():
     with patch.object(subprocess, "Popen") as mock_popen:
         speech.speak("hi", rate_wpm="fast")   # must not raise
     argv = _popen_argv(mock_popen)
-    assert argv[4] == str(speech.DEFAULT_RATE_WPM)
+    assert argv[argv.index("-r") + 1] == str(speech.DEFAULT_RATE_WPM)
 
     with patch.object(subprocess, "Popen") as mock_popen:
         speech.speak("hi", rate_wpm=None)   # must not raise
     argv = _popen_argv(mock_popen)
-    assert argv[4] == str(speech.DEFAULT_RATE_WPM)
+    assert argv[argv.index("-r") + 1] == str(speech.DEFAULT_RATE_WPM)
+
+
+def test_speak_system_default_omits_voice_flag():
+    for kwargs in ({}, {"voice": None}, {"voice": "system"}, {"voice": ""}):
+        with patch.object(subprocess, "Popen") as mock_popen:
+            speech.speak("hi", **kwargs)
+        assert "-v" not in _popen_argv(mock_popen)
+
+    with patch.object(subprocess, "Popen") as mock_popen:
+        speech.speak("hi", voice="Alex")
+    assert "-v" in _popen_argv(mock_popen)

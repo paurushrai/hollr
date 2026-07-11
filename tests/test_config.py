@@ -12,7 +12,7 @@ def test_load_config_returns_defaults_when_no_files(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CLAUDE_HOME", tmp_path)
     cfg = config.load_config("/some/project")
     assert cfg["events"]["done"]["mode"] == "announce"
-    assert cfg["voice"]["name"] == "Samantha"
+    assert cfg["voice"]["name"] is None
     assert cfg["quiet_hours"] is None
 
 

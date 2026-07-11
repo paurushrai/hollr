@@ -11,6 +11,9 @@ MAX_NOTIFY_BODY = 200
 MAX_NOTIFY_TITLE = 60
 DEFAULT_RATE_WPM = 190
 
+# Values meaning "use the OS-configured default voice" instead of a named one.
+SYSTEM_VOICE_SENTINELS = frozenset({"", "system", "default"})
+
 
 def _spawn(argv: list[str]) -> None:
     try:
@@ -24,18 +27,26 @@ def _spawn(argv: list[str]) -> None:
         pass  # missing binary / spawn failure must never surface into the hook
 
 
-def speak(text: str, voice: str = "Samantha", rate_wpm: int = DEFAULT_RATE_WPM) -> None:
+def speak(text: str, voice: str | None = None, rate_wpm: int = DEFAULT_RATE_WPM) -> None:
     """Speak via macOS `say`, detached. `--` stops text becoming flags.
     A non-numeric/None rate_wpm (e.g. hand-edited config) falls back to the
     default rate instead of raising — a bad voice setting must never
-    suppress delivery."""
+    suppress delivery.
+
+    `voice` omitted, None, or one of SYSTEM_VOICE_SENTINELS (case-insensitive)
+    means "use the OS-configured default voice" — `-v` is left off entirely
+    so `say` picks it up itself."""
     if not text:
         return
     try:
         rate = int(rate_wpm)
     except (TypeError, ValueError):
         rate = DEFAULT_RATE_WPM
-    _spawn(["say", "-v", str(voice), "-r", str(rate), "--", text[:MAX_SPEECH_CHARS]])
+    argv = ["say"]
+    if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS:
+        argv += ["-v", str(voice)]
+    argv += ["-r", str(rate), "--", text[:MAX_SPEECH_CHARS]]
+    _spawn(argv)
 
 
 def _applescript_safe(text: str) -> str:

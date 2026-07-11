@@ -19,7 +19,7 @@ DEFAULTS: dict = {
         "done": {"mode": "announce"},
         "needs_input": {"mode": "announce"},
     },
-    "voice": {"engine": "system", "name": "Samantha", "rate_wpm": 190},
+    "voice": {"engine": "system", "name": None, "rate_wpm": 190},
     "notify": {"desktop": True},
     "readaloud": {"max_chars": 1200, "strip_code": True},
     "quiet_hours": None,
