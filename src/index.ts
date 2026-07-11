@@ -18,6 +18,7 @@ import { pauseReading, resumeReading, stopReading } from "./core/control.ts";
 import { allRequiredOk, checkAll, type Check } from "./core/doctor.ts";
 import type { EmitDeps } from "./cli/emit.ts";
 import { MAX_STDIN_BYTES, runEmit } from "./cli/emit.ts";
+import { runInitCli, runUninstallCli } from "./cli/init.ts";
 import { runMute } from "./cli/mute.ts";
 import type { StdioMode, WrapperChild, WrapperDeps } from "./cli/run.ts";
 import { runWrapper } from "./cli/run.ts";
@@ -50,8 +51,8 @@ const EXIT_ERROR = 1;
 const EXIT_USAGE = 2;
 
 const USAGE =
-  "usage: hollr <emit|run|test|status|pause|resume|stop|mute|doctor> [options] " +
-  "(--version for version)";
+  "usage: hollr <init|uninstall|emit|run|test|status|pause|resume|stop|mute|doctor> " +
+  "[options] (--version for version)";
 
 const MARK_OK = "✔";
 const MARK_MISSING = "✖";
@@ -203,6 +204,10 @@ export async function run(argv: string[]): Promise<number> {
     case "--version":
     case "-v":
       return emitControl(getVersionString());
+    case "init":
+      return runInitCli(rest, () => runTest([], realTestDeps(), new Date()));
+    case "uninstall":
+      return runUninstallCli();
     case "emit":
       return runEmitSafe(rest);
     case "run":
