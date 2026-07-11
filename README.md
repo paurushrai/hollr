@@ -60,8 +60,6 @@ nothing leaves your machine. Read-aloud reads the local transcript file.
 python3 -m pytest --cov     # tests + coverage (gate: ≥ 80%)
 ```
 
-Design docs: `docs/superpowers/specs/`.
-
 ## License
 
 MIT
