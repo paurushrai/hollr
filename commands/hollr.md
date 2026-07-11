@@ -1,6 +1,6 @@
 ---
-description: Toggle hollr announcements for this project, check status, or run the setup wizard
-argument-hint: "[on|off|status|setup]"
+description: Toggle hollr announcements for this project, check status, run the setup wizard, or pause/resume/stop read-aloud
+argument-hint: "[on|off|status|setup|pause|resume|stop]"
 ---
 
 # /hollr — voice + notification control
@@ -13,6 +13,7 @@ run, hollr stays silent.
 - Global config: `~/.claude/hollr/config.json`
 - Project override: `~/.claude/projects/<ENCODED>/hollr.json`
 - Project mute flag: `~/.claude/projects/<ENCODED>/hollr-muted`
+- Read-aloud pidfile: `~/.claude/hollr/reading.pid`
 
 Handle the argument `$ARGUMENTS`:
 
@@ -40,6 +41,29 @@ mkdir -p "$HOME/.claude/projects/$ENCODED"
 touch "$HOME/.claude/projects/$ENCODED/hollr-muted" && echo "hollr: OFF for this project"
 ```
 
+## `pause` — pause read-aloud in progress
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl pause
+```
+
+## `resume` — resume a paused read-aloud
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl resume
+```
+
+## `stop` — stop read-aloud in progress
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl stop
+```
+
+Run the command, then echo its printed output verbatim (it already reports
+success or "hollr: nothing is being read"). These are the same three shell
+commands you'd bind to a hotkey — see **Bind a hotkey** below for controlling
+read-aloud without going through Claude Code at all.
+
 ## `status` — report configuration
 
 Read global config + project override + mute flag and report concisely:
@@ -59,7 +83,8 @@ when available). Show current values as defaults if config already exists.
    - Response ready (done) / Needs your input / both
 2. **When a response is ready:**
    - Short announcement (voice line + notification)
-   - Read the full response aloud
+   - Read the full response aloud (can be paused/resumed/stopped mid-speech
+     via a hotkey — see **Bind a hotkey** below)
    - Desktop notification only
    - Nothing (silent)
 3. **When Claude needs your input:**
@@ -135,3 +160,39 @@ Write to `~/.claude/hollr/config.json` (global) or
 `~/.claude/projects/<ENCODED>/hollr.json` (project scope), creating parent
 dirs. Confirm with a one-line summary and mention `/hollr off` for muting
 per project. Config takes effect on the next event — no restart needed.
+
+## Bind a hotkey
+
+Read-aloud (`readaloud` mode) can be paused, resumed, or stopped mid-speech
+from a **global hotkey** — no daemon, no new permissions. While speaking,
+hollr tracks the `say` process's PID in `~/.claude/hollr/reading.pid`;
+`bin/hollr-ctl` signals that PID (SIGSTOP / SIGCONT / SIGTERM). A macOS
+global hotkey can only run a shell command, not a Claude Code slash command,
+so bind it directly to this script — it works whether or not Claude Code is
+the focused app:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl pause
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl resume
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-ctl stop
+```
+
+Resolve `${CLAUDE_PLUGIN_ROOT}` to this plugin's absolute install path
+before binding (macOS Shortcuts can't expand Claude Code env vars) — e.g.
+`python3 /path/to/hollr/bin/hollr-ctl pause`. Ask the user to confirm the
+resolved path, or read it from the plugin's installed location.
+
+**macOS (v1, supported now):**
+1. Open **Shortcuts.app** → **+** to create a new Shortcut.
+2. Add the **"Run Shell Script"** action, paste the resolved `hollr-ctl`
+   command above (pick pause, resume, or stop — one shortcut per action).
+3. Open the new Shortcut's **Details** (`ⓘ`) and assign a keyboard shortcut.
+4. Repeat for the other two actions if wanted. The hotkey now works
+   globally, independent of which app has focus.
+
+**Linux / Windows (v2, not yet speaking — this plugin is macOS-only for
+voice today, but the control mechanism is identical once it lands):**
+- **Linux:** bind the same `python3 .../bin/hollr-ctl <action>` command in
+  your desktop environment's keyboard shortcut settings (e.g. GNOME Settings
+  → Keyboard → Custom Shortcuts).
+- **Windows:** use **AutoHotkey** — map a hotkey to `Run, python3 ...\bin\hollr-ctl pause` (and resume/stop).
