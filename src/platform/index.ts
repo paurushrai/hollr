@@ -8,8 +8,12 @@
  */
 
 import { spawn } from "node:child_process";
+import { accessSync, constants } from "node:fs";
+import { delimiter, join } from "node:path";
 
 import { DarwinPlatform } from "./darwin.ts";
+import { LinuxPlatform } from "./linux.ts";
+import { Win32Platform } from "./win32.ts";
 
 /** A binary an engine relies on; consumed by the doctor command (Task 7). */
 export interface RequiredBinary {
@@ -40,15 +44,50 @@ export interface Platform {
 }
 
 /**
- * Pick the engine for the current (or given) platform. Only darwin is
- * implemented; linux/win32 (and anything else) throw until Task 4 replaces
- * this switch with real engines.
+ * Locate `bin` on `PATH`, returning its absolute path or `null`. A minimal
+ * dependency-free `which`: it scans `PATH` entries for an executable file (and
+ * `PATHEXT` variants on Windows). Engines inject a fake in tests, so this only
+ * runs in production via {@link selectPlatform}.
  */
-export function selectPlatform(id: NodeJS.Platform = process.platform): Platform {
-  if (id === "darwin") {
-    return new DarwinPlatform();
+function whichOnPath(bin: string): string | null {
+  const pathEnv = process.env.PATH;
+  if (pathEnv === undefined || pathEnv.length === 0) {
+    return null;
   }
-  throw new Error(`platform not yet implemented: ${id} (Task 4)`);
+  const isWindows = process.platform === "win32";
+  const mode = isWindows ? constants.F_OK : constants.X_OK;
+  const extensions = isWindows
+    ? (process.env.PATHEXT ?? ".EXE").split(delimiter)
+    : [""];
+  for (const dir of pathEnv.split(delimiter)) {
+    if (dir.length === 0) {
+      continue;
+    }
+    for (const extension of extensions) {
+      const candidate = join(dir, `${bin}${extension}`);
+      try {
+        accessSync(candidate, mode);
+        return candidate;
+      } catch {
+        // Not executable here; try the next directory/extension.
+      }
+    }
+  }
+  return null;
+}
+
+/** Pick the engine for the current (or given) platform. */
+export function selectPlatform(id: NodeJS.Platform = process.platform): Platform {
+  switch (id) {
+    case "darwin":
+      return new DarwinPlatform();
+    case "linux":
+      return new LinuxPlatform(whichOnPath);
+    case "win32":
+      return new Win32Platform(whichOnPath);
+    default:
+      throw new Error(`unsupported platform: ${id}`);
+  }
 }
 
 /**

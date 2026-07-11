@@ -6,7 +6,9 @@ vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 import { spawn } from "node:child_process";
 
 import { DarwinPlatform } from "../../src/platform/darwin.ts";
+import { LinuxPlatform } from "../../src/platform/linux.ts";
 import { selectPlatform, spawnDetached } from "../../src/platform/index.ts";
+import { Win32Platform } from "../../src/platform/win32.ts";
 
 const SOUND_DIR = "/System/Library/Sounds";
 
@@ -216,17 +218,21 @@ describe("selectPlatform", () => {
     expect(engine.id).toBe("darwin");
   });
 
-  it("should_throw_task4_for_linux", () => {
-    expect(() => selectPlatform("linux")).toThrowError(/Task 4/);
+  it("should_return_linux_engine_for_linux", () => {
+    const engine = selectPlatform("linux");
+    expect(engine).toBeInstanceOf(LinuxPlatform);
+    expect(engine.id).toBe("linux");
   });
 
-  it("should_throw_task4_for_win32", () => {
-    expect(() => selectPlatform("win32")).toThrowError(/Task 4/);
+  it("should_return_win32_engine_for_win32", () => {
+    const engine = selectPlatform("win32");
+    expect(engine).toBeInstanceOf(Win32Platform);
+    expect(engine.id).toBe("win32");
   });
 
-  it("should_throw_task4_for_unknown_platform", () => {
+  it("should_throw_for_unsupported_platform", () => {
     expect(() => selectPlatform("freebsd")).toThrowError(
-      /platform not yet implemented: freebsd \(Task 4\)/,
+      /unsupported platform: freebsd/,
     );
   });
 });

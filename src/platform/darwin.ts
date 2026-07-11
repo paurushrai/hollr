@@ -8,8 +8,8 @@
 import { existsSync } from "node:fs";
 
 import type { Platform, RequiredBinary } from "./index.ts";
+import { coerceRate } from "./rate.ts";
 
-const DEFAULT_RATE_WPM = 190;
 const MAX_SPEECH_CHARS = 2000;
 const MAX_NOTIFY_BODY = 200;
 const MAX_NOTIFY_TITLE = 60;
@@ -26,11 +26,6 @@ const COLUMN_GAP_RE = /\s{2,}/;
 
 /** Injectable existence check so sound resolution is deterministically testable. */
 type FileExists = (path: string) => boolean;
-
-/** A hand-edited config can carry a bad rate; fall back instead of emitting `NaN`. */
-function coerceRate(rateWpm: number): number {
-  return Number.isFinite(rateWpm) ? Math.trunc(rateWpm) : DEFAULT_RATE_WPM;
-}
 
 /** True for an explicit, non-sentinel voice name (narrows out `null`). */
 function isNamedVoice(voice: string | null): voice is string {
