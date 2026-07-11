@@ -74,7 +74,12 @@ function capTimer(ms: number): { promise: Promise<void>; cancel: () => void } {
   };
 }
 
-async function settleWebhooks(pending: Promise<void>): Promise<void> {
+/**
+ * Drain collected webhook deliveries, bounded by {@link WEBHOOK_CAP_MS}. Shared
+ * with `hollr test`, which fires the same real webhook sink and must not exit
+ * before in-flight deliveries settle. Never rejects.
+ */
+export async function settleWebhooks(pending: Promise<void>): Promise<void> {
   const cap = capTimer(WEBHOOK_CAP_MS);
   try {
     await Promise.race([pending, cap.promise]);

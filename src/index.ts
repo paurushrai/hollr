@@ -17,6 +17,12 @@ import { allRequiredOk, checkAll, type Check } from "./core/doctor.ts";
 import type { EmitDeps } from "./cli/emit.ts";
 import { MAX_STDIN_BYTES, runEmit } from "./cli/emit.ts";
 import { runMute } from "./cli/mute.ts";
+import type { TestDeps } from "./cli/test.ts";
+import { runTest } from "./cli/test.ts";
+import { runStatus } from "./cli/status.ts";
+import type { HollrEvent } from "./core/events.ts";
+import type { WebhookTarget } from "./core/config.ts";
+import type { Platform } from "./platform/index.ts";
 import {
   selectPlatform,
   spawnDetached,
@@ -40,7 +46,7 @@ const EXIT_ERROR = 1;
 const EXIT_USAGE = 2;
 
 const USAGE =
-  "usage: hollr <emit|pause|resume|stop|mute|doctor> [options] " +
+  "usage: hollr <emit|test|status|pause|resume|stop|mute|doctor> [options] " +
   "(--version for version)";
 
 const MARK_OK = "✔";
@@ -53,16 +59,24 @@ export function getVersionString(): string {
   return `${CLI_NAME} ${VERSION}`;
 }
 
+/** The live sink trio + webhook drainer shared by `emit` and `test`. */
+interface RealSinks {
+  platform: Platform;
+  speak: typeof speakSequenced;
+  notify(argv: string[]): void;
+  webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
+  awaitWebhooks(): Promise<void>;
+}
+
 /**
- * Real, production emit dependencies (live sinks + a capped stdin reader). The
- * webhook sink is fire-and-collect: `webhooks` starts delivery and stores the
- * promise, `awaitWebhooks` exposes it so `runEmit` can drain it (≤6s) before
- * exit — otherwise process exit would kill in-flight network deliveries.
+ * Assemble the production sinks once. The webhook sink is fire-and-collect:
+ * `webhooks` starts delivery and stores the promise, `awaitWebhooks` exposes it
+ * so the caller can drain it (≤6s) before exit — otherwise process exit would
+ * kill in-flight network deliveries.
  */
-function realEmitDeps(): EmitDeps {
+function realSinks(): RealSinks {
   let pendingWebhooks: Promise<void> = Promise.resolve();
   return {
-    readStdin,
     platform: selectPlatform(),
     speak: speakSequenced,
     notify: (argv) => {
@@ -72,6 +86,22 @@ function realEmitDeps(): EmitDeps {
       pendingWebhooks = fireWebhooks(ev, targets, { allowHttp });
     },
     awaitWebhooks: () => pendingWebhooks,
+  };
+}
+
+/** Real, production emit dependencies: the live sinks + a capped stdin reader. */
+function realEmitDeps(): EmitDeps {
+  return { readStdin, ...realSinks() };
+}
+
+/** Real, production `hollr test` dependencies: the live sinks + cwd + stdout. */
+function realTestDeps(): TestDeps {
+  return {
+    cwd: process.cwd(),
+    out: (text) => {
+      process.stdout.write(text);
+    },
+    ...realSinks(),
   };
 }
 
@@ -135,6 +165,16 @@ export async function run(argv: string[]): Promise<number> {
       return emitControl(getVersionString());
     case "emit":
       return runEmitSafe(rest);
+    case "test":
+      return runTest(rest, realTestDeps(), new Date());
+    case "status":
+      return runStatus({
+        cwd: process.cwd(),
+        platform: selectPlatform(),
+        out: (text) => {
+          process.stdout.write(text);
+        },
+      });
     case "pause":
       return emitControl(pauseReading());
     case "resume":

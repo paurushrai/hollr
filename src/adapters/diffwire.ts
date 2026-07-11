@@ -119,6 +119,14 @@ function readLedger(): LedgerEntry[] {
   }
 }
 
+/**
+ * The ledger keys of every currently-wired change, for read-only callers like
+ * `hollr status`. Defensive: a missing or malformed ledger yields `[]`.
+ */
+export function listWiredKeys(): string[] {
+  return readLedger().map((entry) => entry.ledgerKey);
+}
+
 function writeLedger(entries: LedgerEntry[]): void {
   mkdirSync(hollrHome(), { recursive: true });
   writeFileAtomic(
