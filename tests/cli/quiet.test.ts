@@ -1,9 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { quietUntilPath } from "../../src/core/config.ts";
 import { parseDuration, runQuiet } from "../../src/cli/quiet.ts";
 
 const NOW = new Date("2026-07-12T12:00:00Z");
+
+let tmpRoot: string;
+let hollrHomeDir: string;
+let prevHollrHome: string | undefined;
+
+beforeEach(() => {
+  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-quiet-"));
+  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  prevHollrHome = process.env.HOLLR_HOME;
+  process.env.HOLLR_HOME = hollrHomeDir;
+});
+
+afterEach(() => {
+  if (prevHollrHome === undefined) {
+    delete process.env.HOLLR_HOME;
+  } else {
+    process.env.HOLLR_HOME = prevHollrHome;
+  }
+  rmSync(tmpRoot, { recursive: true, force: true });
+  vi.restoreAllMocks();
+});
 
 describe("parseDuration", () => {
   it("parses seconds, minutes, hours", () => {
