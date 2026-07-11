@@ -60,19 +60,22 @@ def speak(
     rate_wpm: int = DEFAULT_RATE_WPM,
     sound: str | None = None,
 ) -> None:
-    """Speak via macOS `say`, detached. `--` stops text becoming flags.
+    """Speak via the detached `_play_then_say.py` helper — always, even with
+    no sound configured — so that PID tracking (for hotkey pause/resume/stop,
+    see lib/control.py) and sound-then-voice sequencing happen in exactly one
+    place. This call still returns immediately; the helper blocks internally.
+
     A non-numeric/None rate_wpm (e.g. hand-edited config) falls back to the
     default rate instead of raising — a bad voice setting must never
     suppress delivery.
 
     `voice` omitted, None, or one of SYSTEM_VOICE_SENTINELS (case-insensitive)
-    means "use the OS-configured default voice" — `-v` is left off entirely
-    so `say` picks it up itself.
+    means "use the OS-configured default voice" — the helper leaves `-v` off
+    entirely so `say` picks it up itself.
 
-    `sound`, when it resolves to a real system alert tone, routes through
-    the detached `_play_then_say.py` helper so the tone plays fully BEFORE
-    the voice starts — never simultaneously — while this call still returns
-    immediately (the helper blocks internally, not the caller)."""
+    `sound`, when it resolves to a real system alert tone, plays fully
+    BEFORE the voice starts — never simultaneously; otherwise the helper
+    is still invoked with an empty sound argument, skipping playback."""
     if not text:
         return
     try:
@@ -80,17 +83,9 @@ def speak(
     except (TypeError, ValueError):
         rate = DEFAULT_RATE_WPM
 
-    sound_path = _sound_path(sound)
-    if sound_path:
-        voice_arg = str(voice) if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS else ""
-        _spawn(["python3", _PLAY_THEN_SAY, sound_path, voice_arg, str(rate), text[:MAX_SPEECH_CHARS]])
-        return
-
-    argv = ["say"]
-    if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS:
-        argv += ["-v", str(voice)]
-    argv += ["-r", str(rate), "--", text[:MAX_SPEECH_CHARS]]
-    _spawn(argv)
+    sound_path = _sound_path(sound) or ""
+    voice_arg = str(voice) if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS else ""
+    _spawn(["python3", _PLAY_THEN_SAY, sound_path, voice_arg, str(rate), text[:MAX_SPEECH_CHARS]])
 
 
 def _applescript_safe(text: str) -> str:
