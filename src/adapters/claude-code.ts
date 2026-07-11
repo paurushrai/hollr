@@ -64,6 +64,32 @@ const HOOK_TYPE_COMMAND = "command";
 const ASSISTANT_TYPE = "assistant";
 const TEXT_TYPE = "text";
 
+/** The `blocked` event; the only path the notification-type filter applies to. */
+const BLOCKED_EVENT: EventName = "blocked";
+/** Payload key Claude Code stamps on every Notification hook call. */
+const NOTIFICATION_TYPE_KEY = "notification_type";
+
+/**
+ * Notification types that carry no actionable "needs your input" signal, so
+ * emitting a `blocked` alert for them is just noise. `idle_prompt` is the 60s
+ * idle nag that fires long after the user has stepped away (e.g. after `/clear`,
+ * which itself runs no agent turn and so produces no Stop event); `auth_success`
+ * is informational; `agent_completed` is a done signal the Stop hook already
+ * owns; the terminal `elicitation_*` states are dialog lifecycle, not a prompt.
+ *
+ * Any type NOT listed here — including a payload that omits the field, as older
+ * Claude Code does (anthropics/claude-code#11964) — still notifies, preserving
+ * the pre-filter behaviour. So `permission_prompt`, `agent_needs_input`, and
+ * `elicitation_dialog` continue to fire.
+ */
+const SUPPRESSED_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "idle_prompt",
+  "auth_success",
+  "agent_completed",
+  "elicitation_complete",
+  "elicitation_response",
+]);
+
 const STOP_COMMAND =
   "hollr emit --agent claude-code --event done --payload-stdin";
 const NOTIFICATION_COMMAND =
@@ -303,6 +329,19 @@ function legacyMessage(marker: string): string {
   );
 }
 
+/**
+ * True when `raw` is a Notification (`blocked`) payload whose `notification_type`
+ * is non-actionable and should produce no event. Scoped to the blocked path so a
+ * Stop payload is never filtered; an absent/unknown type is never suppressed.
+ */
+function isSuppressedNotification(raw: JsonObject, eventHint: EventName): boolean {
+  if (eventHint !== BLOCKED_EVENT) {
+    return false;
+  }
+  const type = raw[NOTIFICATION_TYPE_KEY];
+  return typeof type === "string" && SUPPRESSED_NOTIFICATION_TYPES.has(type);
+}
+
 // --- adapter ----------------------------------------------------------------
 
 export const claudeCode: Adapter = {
@@ -352,6 +391,9 @@ export const claudeCode: Adapter = {
 
   normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
     if (!isRecord(raw)) {
+      return null;
+    }
+    if (isSuppressedNotification(raw, eventHint)) {
       return null;
     }
     const cwd = typeof raw.cwd === "string" ? raw.cwd : "";

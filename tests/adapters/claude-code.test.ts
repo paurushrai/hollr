@@ -113,6 +113,68 @@ describe("claudeCode.normalize", () => {
     expect(event?.summary).toBe("Claude needs your permission to use Bash");
   });
 
+  it("should_map_a_permission_prompt_notification_to_a_blocked_event", () => {
+    const event = claudeCode.normalize(
+      {
+        message: "Claude needs your permission to use Bash",
+        notification_type: "permission_prompt",
+      },
+      "blocked",
+    );
+    expect(event?.event).toBe("blocked");
+  });
+
+  it("should_map_an_agent_needs_input_notification_to_a_blocked_event", () => {
+    const event = claudeCode.normalize(
+      { message: "Claude is waiting", notification_type: "agent_needs_input" },
+      "blocked",
+    );
+    expect(event?.event).toBe("blocked");
+  });
+
+  it("should_suppress_an_idle_prompt_notification", () => {
+    // The 60s idle nag fires long after the user has walked away (e.g. after
+    // /clear) and is not actionable — it must produce no event.
+    const event = claudeCode.normalize(
+      { message: "Claude is waiting for your input", notification_type: "idle_prompt" },
+      "blocked",
+    );
+    expect(event).toBeNull();
+  });
+
+  it("should_suppress_auth_success_and_agent_completed_notifications", () => {
+    const authSuccess = claudeCode.normalize(
+      { notification_type: "auth_success" },
+      "blocked",
+    );
+    const agentCompleted = claudeCode.normalize(
+      { notification_type: "agent_completed" },
+      "blocked",
+    );
+    expect(authSuccess).toBeNull();
+    expect(agentCompleted).toBeNull();
+  });
+
+  it("should_still_notify_when_notification_type_is_absent", () => {
+    // Older Claude Code omits notification_type (issue #11964); preserve the
+    // pre-filter behaviour so those users keep getting blocked alerts.
+    const event = claudeCode.normalize(
+      { message: "Claude needs your permission to use Bash" },
+      "blocked",
+    );
+    expect(event?.event).toBe("blocked");
+  });
+
+  it("should_not_suppress_an_idle_prompt_type_on_the_done_event", () => {
+    // The suppression is scoped to the Notification (blocked) path; a Stop
+    // payload is never filtered even if it somehow carries the field.
+    const event = claudeCode.normalize(
+      { notification_type: "idle_prompt" },
+      "done",
+    );
+    expect(event?.event).toBe("done");
+  });
+
   it("should_return_null_when_raw_is_not_an_object", () => {
     expect(claudeCode.normalize("nope", "done")).toBeNull();
     expect(claudeCode.normalize(null, "done")).toBeNull();
