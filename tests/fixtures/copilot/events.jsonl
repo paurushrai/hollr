@@ -1,0 +1,6 @@
+{"type":"session.start","timestamp":"2026-07-11T00:00:00.000Z","data":{"cwd":"/Users/me/dev/my-app","model":"gpt-5"}}
+{"type":"user.message","timestamp":"2026-07-11T00:00:01.000Z","data":{"text":"do the thing"}}
+{"type":"assistant.message","timestamp":"2026-07-11T00:00:02.000Z","data":{"text":"Working on it."}}
+{"type":"tool.execution_complete","timestamp":"2026-07-11T00:00:03.000Z","data":{"toolName":"bash","success":true}}
+{"type":"assistant.message","timestamp":"2026-07-11T00:00:04.000Z","data":{"text":"All done. Tests pass."}}
+{"type":"session.task_complete","timestamp":"2026-07-11T00:00:05.000Z","data":{"summary":"Finished the task"}}

@@ -1,0 +1,9 @@
+{
+  "sessionId": "abc123",
+  "timestamp": 1720000000000,
+  "cwd": "/Users/me/dev/my-app",
+  "hook_event_name": "Notification",
+  "message": "Copilot is waiting for your input",
+  "title": "Agent idle",
+  "notification_type": "agent_idle"
+}

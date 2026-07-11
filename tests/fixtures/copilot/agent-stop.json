@@ -1,0 +1,8 @@
+{
+  "sessionId": "abc123",
+  "timestamp": 1720000000000,
+  "cwd": "/Users/me/dev/my-app",
+  "hook_event_name": "AgentStop",
+  "transcriptPath": "/tmp/replaced-in-tests.jsonl",
+  "stopReason": "end_turn"
+}
