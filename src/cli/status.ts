@@ -97,8 +97,14 @@ function section(title: string, lines: string[]): string {
   return [`${title}:`, ...body].join("\n");
 }
 
+/**
+ * List each wired adapter once. One adapter can own several ledger keys (e.g.
+ * claude-code wires `:settings` and `:command`), which all map to the same
+ * title, so dedupe the labels rather than printing the adapter per key.
+ */
 function wiredSection(keys: string[]): string {
-  return section("Wired adapters", keys.map(wiredLabel));
+  const labels = [...new Set(keys.map(wiredLabel))];
+  return section("Wired adapters", labels);
 }
 
 function eventsSection(config: HollrConfig): string {
