@@ -2,6 +2,10 @@
 
 **hollr calls out the moment your CLI coding agent finishes or needs you.**
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/paurushrai/hollr/main/.github/assets/demo.gif" alt="hollr in action — turn notifications on or off per project and pause everything with hollr quiet" width="720">
+</p>
+
 Kick off a long agent run, switch to something else, and stop babysitting the
 terminal. The second your agent finishes a turn — or stalls waiting on your
 input — hollr speaks up: it reads the response aloud, fires a desktop
