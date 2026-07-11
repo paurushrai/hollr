@@ -70,6 +70,9 @@ class FakeChild extends EventEmitter implements WrapperChild {
   pushStdout(chunk: string): void {
     this.stdout?.emit("data", Buffer.from(chunk, "utf8"));
   }
+  pushStdoutBytes(chunk: Buffer): void {
+    this.stdout?.emit("data", chunk);
+  }
   endStdout(): void {
     this.stdout?.emit("end");
   }
@@ -241,6 +244,7 @@ describe("runWrapper stream mode", () => {
       ["-p", "hi"],
       "stream",
     );
+    child().endStdout();
     child().exit(0);
     await promise;
   });
@@ -305,5 +309,75 @@ describe("runWrapper stream mode", () => {
     child().exit(0);
     await promise;
     expect(spokenText(speak)).toBe("cursor-agent response is ready in my app");
+  });
+
+  it("should_capture_result_that_arrives_after_exit_but_before_stdout_end", async () => {
+    // Regression: the child may fire `exit` before stdout is fully drained.
+    // Emitting must wait for the stream `end` so the result line is captured,
+    // not read null and fall back to the announce line.
+    configureGlobal({ events: { done: { mode: "readaloud" } } });
+    const fixture = readFileSync(FIXTURE_PATH, "utf8");
+    const { deps, speak, child } = makeHarness();
+    const promise = runWrapper(
+      ["--announce-stream", "cursor", "--", "cursor-agent"],
+      deps,
+    );
+    child().exit(0); // exits before the result-bearing chunk is processed
+    child().pushStdout(fixture); // result arrives after exit
+    child().endStdout(); // drain complete -> emit runs now
+    await promise;
+    expect(spokenText(speak)).toBe("The answer is 42.");
+  });
+
+  it("should_decode_multibyte_utf8_split_across_a_chunk_boundary", async () => {
+    // A 4-byte emoji split mid-sequence across two chunks must decode intact,
+    // not degrade into U+FFFD replacement characters.
+    configureGlobal({ events: { done: { mode: "readaloud" } } });
+    const { deps, speak, child } = makeHarness();
+    const line = `${JSON.stringify({ type: "result", result: "Hi 😀 there" })}\n`;
+    const bytes = Buffer.from(line, "utf8");
+    const emojiStart = bytes.indexOf(0xf0); // first byte of 😀 (F0 9F 98 80)
+    const promise = runWrapper(
+      ["--announce-stream", "cursor", "--", "cursor-agent"],
+      deps,
+    );
+    child().pushStdoutBytes(bytes.subarray(0, emojiStart + 1)); // splits the emoji
+    child().pushStdoutBytes(bytes.subarray(emojiStart + 1));
+    child().endStdout();
+    child().exit(0);
+    await promise;
+    expect(spokenText(speak)).toBe("Hi 😀 there");
+  });
+
+  it("should_speak_the_announce_line_not_the_transcript_when_mode_is_announce", async () => {
+    // announce mode never reads the transcript aloud even when one is captured.
+    configureGlobal({ events: { done: { mode: "announce" } } });
+    const fixture = readFileSync(FIXTURE_PATH, "utf8");
+    const { deps, speak, child } = makeHarness();
+    const promise = runWrapper(
+      ["--announce-stream", "cursor", "--", "cursor-agent"],
+      deps,
+    );
+    child().pushStdout(fixture);
+    child().endStdout();
+    child().exit(0);
+    await promise;
+    expect(spokenText(speak)).toBe("cursor-agent response is ready in my app");
+  });
+});
+
+describe("runWrapper exit-code passthrough under failure", () => {
+  it("should_return_the_child_exit_code_when_a_sink_throws", async () => {
+    // The child's exit code is sacred: a throwing sink must not crash the
+    // wrapper or change the passthrough code.
+    configureGlobal();
+    const { deps, child } = makeHarness();
+    deps.notify = (): void => {
+      throw new Error("sink boom");
+    };
+    const promise = runWrapper(["--", "cursor-agent"], deps);
+    child().exit(3); // exit 3 -> error event -> notify sink throws
+    const code = await promise;
+    expect(code).toBe(3);
   });
 });

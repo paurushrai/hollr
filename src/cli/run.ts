@@ -18,6 +18,7 @@
  */
 
 import { basename } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import type { EventName, WebhookTarget } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
@@ -148,40 +149,82 @@ function parseCursorResult(line: string): string | null {
   return typeof text === "string" ? text : null;
 }
 
+/** The stream-mode capture handle: the latest result plus a drain signal. */
+interface StreamCapture {
+  /** Latest cursor `result` text, or `null` until one is seen. */
+  read(): string | null;
+  /** Resolves once stdout has fully ended (all chunks decoded + parsed). */
+  drained: Promise<void>;
+}
+
+/** A stateful NDJSON tee + parser: feed decoded text, flush on end, read result. */
+interface ResultParser {
+  feed(text: string): void;
+  flush(): void;
+  read(): string | null;
+}
+
 /**
- * Attach the stream-mode tee + NDJSON parser to the child's stdout. Every chunk
- * is written back out (so the terminal sees everything) and buffered into whole
- * lines; the latest cursor `result` text wins. Returns a getter for the captured
- * text, `null` until (and unless) a result event is seen.
+ * Build the tee + line-buffered NDJSON parser. Each fed string is written to the
+ * tee (`out`) and split on `\n`; complete lines are parsed and the latest cursor
+ * `result` text wins. `flush` consumes any trailing partial line on stream end.
  */
-function attachStreamCapture(child: WrapperChild, deps: WrapperDeps): () => string | null {
+function createResultParser(out: (chunk: string) => void): ResultParser {
   let lastResponse: string | null = null;
   let buffer = "";
-  const stdout = child.stdout;
-  if (stdout === null) {
-    return () => lastResponse;
-  }
   const consume = (line: string): void => {
     const found = parseCursorResult(line);
     if (found !== null) {
       lastResponse = found;
     }
   };
+  return {
+    feed(text: string): void {
+      if (text.length === 0) {
+        return;
+      }
+      out(text);
+      buffer += text;
+      const parts = buffer.split(LINE_SEPARATOR);
+      buffer = parts.pop() ?? "";
+      for (const line of parts) {
+        consume(line);
+      }
+    },
+    flush(): void {
+      consume(buffer);
+      buffer = "";
+    },
+    read: () => lastResponse,
+  };
+}
+
+/**
+ * Attach the stream-mode tee + parser to the child's stdout. Chunks are decoded
+ * through a {@link StringDecoder} so a multibyte character split across a chunk
+ * boundary survives intact. `drained` resolves on stdout `end`, letting the
+ * caller emit only after the last `result` line has been seen.
+ */
+function attachStreamCapture(child: WrapperChild, deps: WrapperDeps): StreamCapture {
+  const parser = createResultParser(deps.out);
+  const stdout = child.stdout;
+  if (stdout === null) {
+    return { read: parser.read, drained: Promise.resolve() };
+  }
+  let resolveDrained: (() => void) | null = null;
+  const drained = new Promise<void>((resolve) => {
+    resolveDrained = resolve;
+  });
+  const decoder = new StringDecoder("utf8");
   stdout.on("data", (chunk: Buffer) => {
-    const text = chunk.toString("utf8");
-    deps.out(text);
-    buffer += text;
-    const parts = buffer.split(LINE_SEPARATOR);
-    buffer = parts.pop() ?? "";
-    for (const line of parts) {
-      consume(line);
-    }
+    parser.feed(decoder.write(chunk));
   });
   stdout.on("end", () => {
-    consume(buffer);
-    buffer = "";
+    parser.feed(decoder.end());
+    parser.flush();
+    resolveDrained?.();
   });
-  return () => lastResponse;
+  return { read: parser.read, drained };
 }
 
 /** Build the wrapper's event directly (no adapter normalize): done or error. */
@@ -244,29 +287,39 @@ async function finishExit(
   }
 }
 
-/** Resolve with the child's exit code once it exits (or fails to spawn). */
+/**
+ * Resolve with the child's exit code once it exits (or fails to spawn). In
+ * stream mode the emit is deferred until stdout has fully drained
+ * ({@link StreamCapture.drained}) — Node does not guarantee stdout `data`/`end`
+ * precede `exit`, so emitting on `exit` alone could miss the final `result`
+ * line. A spawn `error` short-circuits (there is no transcript to await).
+ */
 function awaitChild(
   child: WrapperChild,
   deps: WrapperDeps,
   command: string,
-  capture: (() => string | null) | null,
+  capture: StreamCapture | null,
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     let settled = false;
-    const done = (code: number): void => {
+    const finish = (code: number): void => {
       if (settled) {
         return;
       }
       settled = true;
-      void finishExit(deps, command, code, capture).finally(() => {
+      const read = capture !== null ? capture.read : null;
+      void finishExit(deps, command, code, read).finally(() => {
         resolve(code);
       });
     };
+    const drained = capture !== null ? capture.drained : Promise.resolve();
     child.on("error", () => {
-      done(SPAWN_FAILED);
+      finish(SPAWN_FAILED);
     });
     child.on("exit", (code) => {
-      done(code ?? SIGNAL_EXIT_CODE);
+      void drained.then(() => {
+        finish(code ?? SIGNAL_EXIT_CODE);
+      });
     });
   });
 }
