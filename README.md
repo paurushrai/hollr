@@ -36,6 +36,23 @@ npx hollr-cli init
 `hollr init` detects which agents you have, shows you the exact config diff
 before writing anything, and lets you choose what you hear and when.
 
+## Turning it on and off
+
+At setup, hollr asks whether it should notify you **in every project** or
+**only in projects you turn on**. You can change your mind per project or pause
+everything for a while:
+
+| Want | Command |
+|------|---------|
+| Turn hollr on for this project | `hollr on` |
+| Turn it off for this project | `hollr off` |
+| Quiet everywhere for a bit | `hollr quiet` · `hollr quiet 30m` |
+| Turn quiet back off | `hollr quiet off` |
+| See what hollr is doing and why | `hollr status` |
+
+`hollr quiet 30m` comes back on by itself after 30 minutes; a bare `hollr quiet`
+stays quiet until you run `hollr quiet off`.
+
 ## Agent support
 
 Each integration is defined by what the agent's own hooks can actually deliver —
