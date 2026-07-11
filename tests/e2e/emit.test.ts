@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { claudeCode } from "../../src/adapters/claude-code.ts";
 import type { EmitDeps } from "../../src/cli/emit.ts";
 import { runEmit } from "../../src/cli/emit.ts";
-import { encodeCwd } from "../../src/core/config.ts";
+import { encodeCwd, type WebhookTarget } from "../../src/core/config.ts";
 import type { HollrEvent } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
@@ -108,13 +108,15 @@ interface Harness {
 function makeDeps(stdin: string): Harness {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
-  const webhooks = vi.fn<(ev: HollrEvent) => void>();
+  const webhooks =
+    vi.fn<(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
   const deps: EmitDeps = {
     readStdin: () => Promise.resolve(stdin),
     platform: fakePlatform(),
     speak,
     notify,
     webhooks,
+    awaitWebhooks: () => Promise.resolve(),
   };
   return { deps, speak, notify, webhooks };
 }

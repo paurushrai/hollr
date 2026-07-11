@@ -23,6 +23,7 @@ import {
   whichOnPath,
 } from "./platform/index.ts";
 import { speakSequenced } from "./platform/sequencer.ts";
+import { fireWebhooks } from "./sinks/webhook.ts";
 
 /**
  * Replaced at build time by tsup's `define` with the version from package.json.
@@ -52,8 +53,14 @@ export function getVersionString(): string {
   return `${CLI_NAME} ${VERSION}`;
 }
 
-/** Real, production emit dependencies (live sinks + a capped stdin reader). */
+/**
+ * Real, production emit dependencies (live sinks + a capped stdin reader). The
+ * webhook sink is fire-and-collect: `webhooks` starts delivery and stores the
+ * promise, `awaitWebhooks` exposes it so `runEmit` can drain it (≤6s) before
+ * exit — otherwise process exit would kill in-flight network deliveries.
+ */
 function realEmitDeps(): EmitDeps {
+  let pendingWebhooks: Promise<void> = Promise.resolve();
   return {
     readStdin,
     platform: selectPlatform(),
@@ -61,9 +68,10 @@ function realEmitDeps(): EmitDeps {
     notify: (argv) => {
       spawnDetached(argv);
     },
-    webhooks: () => {
-      // No-op until T12 wires the real webhook sink.
+    webhooks: (ev, targets, allowHttp) => {
+      pendingWebhooks = fireWebhooks(ev, targets, { allowHttp });
     },
+    awaitWebhooks: () => pendingWebhooks,
   };
 }
 

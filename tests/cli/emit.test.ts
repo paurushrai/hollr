@@ -7,6 +7,7 @@ import type { HollrEvent } from "../../src/core/events.ts";
 import { projectLabel } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
+import type { WebhookTarget } from "../../src/core/config.ts";
 import type { EmitDeps, EmitFlags } from "../../src/cli/emit.ts";
 import { buildEmitEvent, runEmit } from "../../src/cli/emit.ts";
 
@@ -63,13 +64,15 @@ interface Harness {
 function makeDeps(stdin = ""): Harness {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
-  const webhooks = vi.fn<(ev: HollrEvent) => void>();
+  const webhooks =
+    vi.fn<(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
   const deps: EmitDeps = {
     readStdin: () => Promise.resolve(stdin),
     platform: fakePlatform(),
     speak,
     notify,
     webhooks,
+    awaitWebhooks: () => Promise.resolve(),
   };
   return { deps, speak, notify, webhooks };
 }

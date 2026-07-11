@@ -9,13 +9,14 @@
  */
 
 import { byId } from "../adapters/registry.ts";
-import type { EventName, HollrConfig } from "../core/config.ts";
+import type { EventName, HollrConfig, WebhookTarget } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { route } from "../core/router.ts";
 import type { Platform } from "../platform/index.ts";
 import type { speakSequenced } from "../platform/sequencer.ts";
+import { hardenConfig } from "../sinks/webhook.ts";
 
 /** Hard cap on stdin payload size; anything larger is ignored (payload = {}). */
 export const MAX_STDIN_BYTES = 1024 * 1024;
@@ -39,7 +40,49 @@ export interface EmitDeps {
   platform: Platform;
   speak: typeof speakSequenced;
   notify(argv: string[]): void;
-  webhooks(ev: HollrEvent): void;
+  /**
+   * Start (do not await) webhook delivery for a routed event. `targets` and
+   * `allowHttp` are threaded from the config `runEmit` already loaded, so the
+   * sink never re-reads config. The implementation collects the returned
+   * promise for {@link EmitDeps.awaitWebhooks} to drain.
+   */
+  webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
+  /** Resolve when collected webhook deliveries settle (never rejects). */
+  awaitWebhooks(): Promise<void>;
+}
+
+/**
+ * The router returns synchronously and cannot await network I/O, so webhooks it
+ * allowed would be killed by process exit. `runEmit` drains them here, bounded
+ * by {@link WEBHOOK_CAP_MS}, without moving the mute/quiet gating out of the
+ * router. Never throws: a webhook rejection or timeout cannot crash the turn.
+ */
+const WEBHOOK_CAP_MS = 6000;
+
+function capTimer(ms: number): { promise: Promise<void>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return {
+    promise,
+    cancel: () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+
+async function settleWebhooks(pending: Promise<void>): Promise<void> {
+  const cap = capTimer(WEBHOOK_CAP_MS);
+  try {
+    await Promise.race([pending, cap.promise]);
+  } catch {
+    // A webhook rejection or timeout must never crash the turn.
+  } finally {
+    cap.cancel();
+  }
 }
 
 const EMPTY_PAYLOAD = "{}";
@@ -216,16 +259,21 @@ export async function runEmit(args: string[], deps: EmitDeps): Promise<number> {
     return EXIT_NO_EVENT;
   }
   const cfg = loadConfig(event.cwd);
+  hardenConfig(cfg.webhooks);
   await hydrateLastResponse(flags, event, payload, cfg);
-  return route(
+  const code = route(
     event,
     cfg,
     {
       platform: deps.platform,
       speak: deps.speak,
       notify: deps.notify,
-      webhooks: deps.webhooks,
+      webhooks: (ev) => {
+        deps.webhooks(ev, cfg.webhooks, cfg.allowHttp);
+      },
     },
     new Date(),
   );
+  await settleWebhooks(deps.awaitWebhooks());
+  return code;
 }
