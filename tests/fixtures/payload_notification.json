@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "Notification",
+  "cwd": "/Users/me/dev/my-app",
+  "message": "Claude needs your permission to use Bash",
+  "session_id": "abc123"
+}

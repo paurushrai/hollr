@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "Stop",
+  "cwd": "/Users/me/dev/my-app",
+  "transcript_path": "/tmp/replaced-in-tests.jsonl",
+  "session_id": "abc123"
+}
