@@ -9,7 +9,7 @@
  */
 
 import { byId } from "../adapters/registry.ts";
-import type { EventName } from "../core/config.ts";
+import type { EventName, HollrConfig } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
@@ -167,6 +167,46 @@ function normalizeEmit(
 /** Exit code for a successful emit that produced no event to route. */
 const EXIT_NO_EVENT = 0;
 
+const READALOUD_MODE = "readaloud";
+/** Readaloud only makes sense once the turn is over, so it is done-only. */
+const READALOUD_EVENT: EventName = "done";
+
+/**
+ * True when readaloud applies to THIS event: the config asks for it AND it is
+ * the done event. Read defensively (config is not value-validated) so a
+ * malformed `events` entry can never throw out of the fast path.
+ */
+function isReadaloudEvent(cfg: HollrConfig, event: EventName): boolean {
+  if (event !== READALOUD_EVENT) {
+    return false;
+  }
+  const entry: unknown = cfg.events[event];
+  return isRecord(entry) && entry.mode === READALOUD_MODE;
+}
+
+/**
+ * Hydrate `event.lastResponse` for a readaloud done event by asking the agent's
+ * adapter to read its last response (e.g. a transcript tail). Gated on readaloud
+ * actually applying so the up-to-2MB transcript read never runs on the fast
+ * path; adapters that decline return `null`, and the router falls back to the
+ * announce line.
+ */
+async function hydrateLastResponse(
+  flags: EmitFlags,
+  event: HollrEvent,
+  payload: Record<string, unknown>,
+  cfg: HollrConfig,
+): Promise<void> {
+  if (!isReadaloudEvent(cfg, event.event)) {
+    return;
+  }
+  const adapter = byId(flags.agent);
+  if (adapter === undefined) {
+    return;
+  }
+  event.lastResponse = await adapter.readLastResponse(payload);
+}
+
 /** Parse, normalize, and route an emit; returns the router's exit code. */
 export async function runEmit(args: string[], deps: EmitDeps): Promise<number> {
   const flags = parseEmitFlags(args);
@@ -175,9 +215,11 @@ export async function runEmit(args: string[], deps: EmitDeps): Promise<number> {
   if (event === null) {
     return EXIT_NO_EVENT;
   }
+  const cfg = loadConfig(event.cwd);
+  await hydrateLastResponse(flags, event, payload, cfg);
   return route(
     event,
-    loadConfig(event.cwd),
+    cfg,
     {
       platform: deps.platform,
       speak: deps.speak,
