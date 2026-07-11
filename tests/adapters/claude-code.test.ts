@@ -28,6 +28,7 @@ const STOP_COMMAND =
 const NOTIFICATION_COMMAND =
   "hollr emit --agent claude-code --event blocked --payload-stdin";
 const LEDGER_KEY = "claude-code:settings";
+const COMMAND_LEDGER_KEY = "claude-code:command";
 
 let tmpRoot: string;
 let home: string;
@@ -46,6 +47,10 @@ function deps(which: (bin: string) => string | null = whichNone): AdapterDeps {
 
 function settingsPath(): string {
   return join(home, ".claude", "settings.json");
+}
+
+function commandPath(): string {
+  return join(home, ".claude", "commands", "hollr.md");
 }
 
 function writeSettings(json: unknown): void {
@@ -76,6 +81,17 @@ afterEach(() => {
     process.env.HOLLR_HOME = prevHollrHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe("claudeCode.capabilities", () => {
+  it("should_advertise_the_slash_command_capability", () => {
+    expect(claudeCode.capabilities).toEqual({
+      done: true,
+      blocked: true,
+      readAloud: true,
+      slashCommand: true,
+    });
+  });
 });
 
 describe("claudeCode.normalize", () => {
@@ -220,11 +236,123 @@ describe("claudeCode.wire", () => {
   });
 });
 
+describe("claudeCode.wire slash command file", () => {
+  it("should_write_the_hollr_md_slash_command", async () => {
+    await claudeCode.wire(deps());
+    expect(existsSync(commandPath())).toBe(true);
+    const md = readFileSync(commandPath(), "utf8");
+    expect(md).toContain(
+      "description: Control hollr (pause/resume/stop/status/mute/doctor)",
+    );
+    expect(md).toContain("hollr $ARGUMENTS");
+    // `init` is terminal-only and must be documented as unavailable here.
+    expect(md).toMatch(/init/i);
+    expect(md).toMatch(/terminal-only/i);
+  });
+
+  it("should_include_the_command_file_addition_in_the_wire_diff", async () => {
+    const result = await claudeCode.wire(deps());
+    expect(result.diff).toContain("hollr $ARGUMENTS");
+  });
+
+  it("should_be_idempotent_for_the_command_file", async () => {
+    await claudeCode.wire(deps());
+    const first = readFileSync(commandPath(), "utf8");
+    const second = await claudeCode.wire(deps());
+    expect(second.changed).toBe(false);
+    expect(readFileSync(commandPath(), "utf8")).toBe(first);
+  });
+});
+
+describe("claudeCode.wire legacy v1 cleanup", () => {
+  const LEGACY_SETTINGS = {
+    enabledPlugins: { "hollr@hollr-marketplace": true },
+    hooks: {
+      PreToolUse: [
+        { matcher: "Bash", hooks: [{ type: "command", command: "audit.sh" }] },
+      ],
+      Stop: [
+        {
+          hooks: [
+            { type: "command", command: "python3 ~/.claude/tools/announce-done.py" },
+          ],
+        },
+      ],
+      Notification: [
+        { hooks: [{ type: "command", command: "python3 hollr_hook.py" }] },
+      ],
+    },
+  };
+
+  it("should_strip_legacy_entries_while_preserving_unrelated_hooks", async () => {
+    writeSettings(LEGACY_SETTINGS);
+    const result = await claudeCode.wire(deps());
+    expect(result.changed).toBe(true);
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("announce-done.py");
+    expect(raw).not.toContain("hollr_hook.py");
+    expect(raw).not.toContain("hollr@hollr-marketplace");
+    const hooks = readSettings().hooks as Record<string, unknown>;
+    expect(JSON.stringify(hooks.PreToolUse)).toContain("audit.sh");
+    expect(JSON.stringify(hooks.Stop)).toContain(STOP_COMMAND);
+    expect(JSON.stringify(hooks.Notification)).toContain(NOTIFICATION_COMMAND);
+  });
+
+  it("should_show_the_legacy_removal_in_the_wire_diff", async () => {
+    writeSettings(LEGACY_SETTINGS);
+    const result = await claudeCode.wire(deps());
+    expect(result.diff).toContain("hollr@hollr-marketplace");
+    expect(result.diff).toContain("announce-done.py");
+  });
+
+  it("should_be_idempotent_after_the_legacy_strip", async () => {
+    writeSettings(LEGACY_SETTINGS);
+    await claudeCode.wire(deps());
+    const second = await claudeCode.wire(deps());
+    expect(second.changed).toBe(false);
+    expect(second.diff).toBe("");
+  });
+
+  it("should_not_remove_anything_when_no_legacy_entries_exist", async () => {
+    writeSettings({
+      hooks: {
+        PreToolUse: [{ hooks: [{ type: "command", command: "audit.sh" }] }],
+      },
+    });
+    await claudeCode.wire(deps());
+    const hooks = readSettings().hooks as Record<string, unknown>;
+    // The single PreToolUse entry survives untouched.
+    expect(hooks.PreToolUse).toHaveLength(1);
+    expect(JSON.stringify(hooks.PreToolUse)).toContain("audit.sh");
+  });
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+    unwireFromLedger(COMMAND_LEDGER_KEY);
+  });
+});
+
 describe("claudeCode.unwire", () => {
   it("should_restore_the_prior_settings_byte_identically", async () => {
     writeSettings({
       hooks: {
         PreToolUse: [{ hooks: [{ type: "command", command: "audit.sh" }] }],
+      },
+    });
+    const original = readFileSync(settingsPath(), "utf8");
+    await claudeCode.wire(deps());
+    expect(readFileSync(settingsPath(), "utf8")).not.toBe(original);
+    await claudeCode.unwire(deps());
+    expect(readFileSync(settingsPath(), "utf8")).toBe(original);
+  });
+
+  it("should_restore_legacy_v1_entries_byte_identically", async () => {
+    writeSettings({
+      enabledPlugins: { "hollr@hollr-marketplace": true },
+      hooks: {
+        Stop: [
+          { hooks: [{ type: "command", command: "python3 announce-done.py" }] },
+        ],
       },
     });
     const original = readFileSync(settingsPath(), "utf8");
@@ -241,8 +369,16 @@ describe("claudeCode.unwire", () => {
     expect(existsSync(settingsPath())).toBe(false);
   });
 
+  it("should_delete_the_command_file_on_unwire", async () => {
+    await claudeCode.wire(deps());
+    expect(existsSync(commandPath())).toBe(true);
+    await claudeCode.unwire(deps());
+    expect(existsSync(commandPath())).toBe(false);
+  });
+
   afterEach(() => {
     unwireFromLedger(LEDGER_KEY);
+    unwireFromLedger(COMMAND_LEDGER_KEY);
   });
 });
 

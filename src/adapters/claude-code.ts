@@ -17,12 +17,43 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireJsonFile } from "./diffwire.ts";
+import { unwireFromLedger, wireJsonFile, wireTextFile } from "./diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "claude-code";
 const TITLE = "Claude Code";
 const LEDGER_KEY = "claude-code:settings";
+const COMMAND_LEDGER_KEY = "claude-code:command";
+
+const COMMANDS_DIR = "commands";
+const COMMAND_FILE = "hollr.md";
+const HOOKS_KEY = "hooks";
+const ENABLED_PLUGINS_KEY = "enabledPlugins";
+
+/**
+ * The `/hollr` custom slash command hollr owns. Claude Code substitutes
+ * `$ARGUMENTS` with the user's text, and the body instructs Claude to run the
+ * global `hollr` CLI and relay its output. `init` is deliberately excluded — it
+ * is an interactive terminal-only wizard, not a slash-command action. Managed by
+ * hollr and fully reversible via `hollr unwire`.
+ */
+const COMMAND_TEMPLATE = `---
+description: Control hollr (pause/resume/stop/status/mute/doctor)
+---
+
+Managed by hollr — reversible via \`hollr unwire\`. Do not edit by hand.
+
+Run this shell command and relay its output to the user verbatim:
+
+\`\`\`bash
+hollr $ARGUMENTS
+\`\`\`
+
+Supported actions: pause, resume, stop, status, mute, doctor.
+
+Note: \`hollr init\` is terminal-only (an interactive wizard) and is not
+available as a slash command — run it directly in your terminal instead.
+`;
 
 /** Cap on the transcript tail we read; ports v1 `MAX_TRANSCRIPT_BYTES`. */
 const MAX_TRANSCRIPT_BYTES = 2_000_000;
@@ -38,11 +69,15 @@ const STOP_COMMAND =
 const NOTIFICATION_COMMAND =
   "hollr emit --agent claude-code --event blocked --payload-stdin";
 
+/** v0.1.x Python hook scripts; a hook command referencing one is legacy. */
+const LEGACY_SCRIPT_MARKERS = ["hollr_hook.py", "announce-done.py"] as const;
+/** The v0.1.x plugin id, recorded under `enabledPlugins` in settings. */
+const LEGACY_PLUGIN_ID = "hollr@hollr-marketplace";
+
 /** Substrings that mark a leftover v1 (Python) integration in settings. */
 const LEGACY_MARKERS = [
-  "hollr_hook.py",
-  "announce-done.py",
-  "hollr@hollr-marketplace",
+  ...LEGACY_SCRIPT_MARKERS,
+  LEGACY_PLUGIN_ID,
 ] as const;
 
 type JsonObject = Record<string, unknown>;
@@ -53,6 +88,21 @@ function isRecord(value: unknown): value is JsonObject {
 
 function settingsPath(deps: AdapterDeps): string {
   return join(deps.home, ".claude", "settings.json");
+}
+
+function commandPath(deps: AdapterDeps): string {
+  return join(deps.home, ".claude", COMMANDS_DIR, COMMAND_FILE);
+}
+
+/** Return a shallow copy of `obj` without `key`, preserving key order. */
+function omitKey(obj: JsonObject, key: string): JsonObject {
+  const rest: JsonObject = {};
+  for (const [name, value] of Object.entries(obj)) {
+    if (name !== key) {
+      rest[name] = value;
+    }
+  }
+  return rest;
 }
 
 function isDir(path: string): boolean {
@@ -153,6 +203,90 @@ function addHooks(json: JsonObject): JsonObject {
   };
 }
 
+// --- legacy v0.1.x cleanup --------------------------------------------------
+
+/** True when a hook command string references a legacy v1 Python script. */
+function commandIsLegacy(command: unknown): boolean {
+  return (
+    typeof command === "string" &&
+    LEGACY_SCRIPT_MARKERS.some((marker) => command.includes(marker))
+  );
+}
+
+/** True when any of a hook-array entry's commands is a legacy v1 script. */
+function isLegacyHookEntry(entry: unknown): boolean {
+  if (!isRecord(entry) || !Array.isArray(entry.hooks)) {
+    return false;
+  }
+  return entry.hooks.some(
+    (hook) => isRecord(hook) && commandIsLegacy(hook.command),
+  );
+}
+
+/**
+ * Drop every legacy hook entry from each event array, preserving unrelated
+ * entries; an event emptied by the strip is removed entirely so no orphan key
+ * survives. Unrelated events (e.g. PreToolUse) pass through untouched.
+ */
+function stripLegacyHooks(hooks: JsonObject): JsonObject {
+  const cleaned: JsonObject = {};
+  for (const [event, entries] of Object.entries(hooks)) {
+    if (!Array.isArray(entries)) {
+      cleaned[event] = entries;
+      continue;
+    }
+    const kept = entries.filter((entry) => !isLegacyHookEntry(entry));
+    if (kept.length > 0) {
+      cleaned[event] = kept;
+    }
+  }
+  return cleaned;
+}
+
+/** Remove the legacy plugin id from `enabledPlugins`, dropping it if emptied. */
+function stripLegacyPlugin(json: JsonObject): JsonObject {
+  const plugins = json[ENABLED_PLUGINS_KEY];
+  if (isRecord(plugins) && LEGACY_PLUGIN_ID in plugins) {
+    const rest = omitKey(plugins, LEGACY_PLUGIN_ID);
+    return Object.keys(rest).length > 0
+      ? { ...json, [ENABLED_PLUGINS_KEY]: rest }
+      : omitKey(json, ENABLED_PLUGINS_KEY);
+  }
+  if (Array.isArray(plugins) && plugins.includes(LEGACY_PLUGIN_ID)) {
+    const kept = plugins.filter((item) => item !== LEGACY_PLUGIN_ID);
+    return kept.length > 0
+      ? { ...json, [ENABLED_PLUGINS_KEY]: kept }
+      : omitKey(json, ENABLED_PLUGINS_KEY);
+  }
+  return json;
+}
+
+/** Strip all v0.1.x legacy hooks and the legacy plugin entry from settings. */
+function stripLegacy(json: JsonObject): JsonObject {
+  const withoutPlugin = stripLegacyPlugin(json);
+  const hooks = withoutPlugin[HOOKS_KEY];
+  if (!isRecord(hooks)) {
+    return withoutPlugin;
+  }
+  const cleaned = stripLegacyHooks(hooks);
+  return Object.keys(cleaned).length > 0
+    ? { ...withoutPlugin, [HOOKS_KEY]: cleaned }
+    : omitKey(withoutPlugin, HOOKS_KEY);
+}
+
+/**
+ * The full settings mutation: strip any v0.1.x legacy integration, then add
+ * hollr's Stop/Notification hooks. Idempotent — a fully-wired file is unchanged.
+ */
+function wireSettings(json: JsonObject): JsonObject {
+  return addHooks(stripLegacy(json));
+}
+
+/** Concatenate the non-empty per-file diffs. */
+function joinDiffs(settingsDiff: string, commandDiff: string): string {
+  return [settingsDiff, commandDiff].filter((diff) => diff.length > 0).join("\n");
+}
+
 /** The first legacy marker found in the raw settings text, or `null`. */
 function legacyMarker(rawText: string | null): string | null {
   if (rawText === null) {
@@ -164,8 +298,8 @@ function legacyMarker(rawText: string | null): string | null {
 /** Human-readable removal guidance for a detected legacy marker. */
 function legacyMessage(marker: string): string {
   return (
-    `legacy hollr integration detected in settings (${marker}); ` +
-    "remove it after migrating — automatic cleanup lands in a later release"
+    `legacy hollr v1 integration detected in settings (${marker}); ` +
+    "`hollr init` removes it as part of wiring (reversible via `hollr unwire`)"
   );
 }
 
@@ -175,7 +309,7 @@ export const claudeCode: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Claude Code — done/blocked hooks and transcript read-aloud",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: false },
+  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: true },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const path = settingsPath(deps);
@@ -194,18 +328,25 @@ export const claudeCode: Adapter = {
   wire(deps: AdapterDeps): Promise<WireResult> {
     const path = settingsPath(deps);
     const marker = legacyMarker(readFileOrNull(path));
-    const op = wireJsonFile(path, addHooks, LEDGER_KEY);
+    const settingsOp = wireJsonFile(path, wireSettings, LEDGER_KEY);
+    const commandOp = wireTextFile(
+      commandPath(deps),
+      COMMAND_TEMPLATE,
+      COMMAND_LEDGER_KEY,
+    );
     const result: WireResult = {
-      changed: op.changed,
-      diff: op.diff,
+      changed: settingsOp.changed || commandOp.changed,
+      diff: joinDiffs(settingsOp.diff, commandOp.diff),
       warnings: marker === null ? [] : [legacyMessage(marker)],
     };
-    op.apply();
+    settingsOp.apply();
+    commandOp.apply();
     return Promise.resolve(result);
   },
 
   unwire(_deps: AdapterDeps): Promise<void> {
     unwireFromLedger(LEDGER_KEY);
+    unwireFromLedger(COMMAND_LEDGER_KEY);
     return Promise.resolve();
   },
 
