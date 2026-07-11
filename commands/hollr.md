@@ -68,17 +68,23 @@ when available). Show current values as defaults if config already exists.
    - System voice (macOS built-in, fully local)
    - Neural voice — reply: "Neural voices are coming in v3; using system
      voice for now." and write `"engine": "system"`.
-5. **Voice + speaking rate:** enumerate the voices actually installed on
-   this machine and let the user pick one in-terminal — no leaving the
-   session, no context switch. On macOS (v1) run `say -v '?'` and parse it:
-   each line is `<Name>  <lang>  # <sample>` (name may contain spaces —
-   the name is everything before the run of 2+ spaces before the locale).
-   Present the names (optionally grouped/filtered to the user's locale
-   prefix, e.g. `en`), default `Samantha` if present. Then ask speaking
-   rate 150–220 wpm (default 190). Write the chosen name to
-   `voice.name`. For Linux/Windows (v2 engines, not yet speaking) the
-   equivalent enumeration is `spd-say -L` / `espeak --voices` and
-   PowerShell `[System.Speech.Synthesis.SpeechSynthesizer]::new().GetInstalledVoices()`
+5. **Voice + speaking rate:** default (recommended) is **your operating
+   system's default voice** — writes `voice.name: null`, so `say` runs with
+   no `-v` flag and simply uses whatever voice is configured in macOS
+   System Settings. Offer picking a specific installed voice as the
+   opt-in alternative for users who want a voice other than their OS
+   default: enumerate the voices actually installed on this machine and
+   let the user pick one in-terminal — no leaving the session, no context
+   switch. On macOS (v1) run `say -v '?'` and parse it: each line is
+   `<Name>  <lang>  # <sample>` (name may contain spaces — the name is
+   everything before the run of 2+ spaces before the locale). Present the
+   names (optionally grouped/filtered to the user's locale prefix, e.g.
+   `en`). Then ask speaking rate 150–220 wpm (default 190). Write the
+   chosen name to `voice.name`; if the user sticks with the OS default,
+   leave `voice.name` as `null`. For Linux/Windows (v2 engines, not yet
+   speaking) the equivalent enumeration is `spd-say -L` / `espeak --voices`
+   and PowerShell
+   `[System.Speech.Synthesis.SpeechSynthesizer]::new().GetInstalledVoices()`
    — the wizard should detect the OS and, on non-macOS, tell the user voice
    playback lands in v2 and record their engine preference only.
 
@@ -102,12 +108,14 @@ for anything not asked):
     "done":        { "mode": "announce" },
     "needs_input": { "mode": "announce" }
   },
-  "voice": { "engine": "system", "name": "Samantha", "rate_wpm": 190 },
+  "voice": { "engine": "system", "name": null, "rate_wpm": 190 },
   "notify": { "desktop": true },
   "readaloud": { "max_chars": 1200, "strip_code": true },
   "quiet_hours": null
 }
 ```
+`voice.name: null` = use the OS's default voice (recommended); set it to an
+installed voice's name only when the user opts into a specific one.
 
 Valid modes — done: `announce` | `readaloud` | `notify` | `silent`;
 needs_input: `announce` | `notify` | `silent`.
