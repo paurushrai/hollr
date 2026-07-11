@@ -341,6 +341,59 @@ describe("delivery semantics", () => {
   });
 });
 
+describe("malformed config resilience (never reject, isolate targets)", () => {
+  it("should_skip_unknown_provider_and_still_deliver_valid_sibling", async () => {
+    const { fn, calls } = recordingFetch();
+    const bad = target({ name: "tg", url: "https://hook.example/tg" });
+    // Simulate a hand-edited config with a provider outside the known keys.
+    (bad as { provider: string }).provider = "telegram";
+    await expect(
+      fireWebhooks(makeEvent(), [bad, target({ name: "ok" })], {
+        allowHttp: false,
+        fetchFn: fn,
+        logPath,
+      }),
+    ).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://hook.example/endpoint");
+    const log = readFileSync(logPath, "utf8");
+    expect(log).toContain("ok");
+    expect(log).toContain("skip tg unknown-provider");
+  });
+
+  it("should_skip_target_with_non_array_events_without_throwing", async () => {
+    const { fn, calls } = recordingFetch();
+    const bad = target({ name: "bad-events" });
+    (bad as { events: unknown }).events = "done";
+    await expect(
+      fireWebhooks(makeEvent(), [bad, target({ name: "ok" })], {
+        allowHttp: false,
+        fetchFn: fn,
+        logPath,
+      }),
+    ).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://hook.example/endpoint");
+    const log = readFileSync(logPath, "utf8");
+    expect(log).toContain("ok");
+    expect(log).not.toContain("bad-events");
+  });
+
+  it("should_skip_target_with_missing_events_without_throwing", async () => {
+    const { fn, calls } = recordingFetch();
+    const bad = target({ name: "no-events" });
+    delete (bad as { events?: unknown }).events;
+    await expect(
+      fireWebhooks(makeEvent(), [bad, target({ name: "ok" })], {
+        allowHttp: false,
+        fetchFn: fn,
+        logPath,
+      }),
+    ).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe("hardenConfig", () => {
   it("should_chmod_config_to_600_when_a_target_has_headers", () => {
     const cfgPath = join(hollrHomeDir, "config.json");

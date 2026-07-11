@@ -35,6 +35,8 @@ const OUTCOME_OK = "ok";
 const OUTCOME_NETWORK_ERROR = "error";
 const OUTCOME_SKIP = "skip";
 const SKIP_REASON_HTTP = "http-not-allowed";
+const SKIP_REASON_UNKNOWN_PROVIDER = "unknown-provider";
+const SKIP_REASON_DELIVERY_ERROR = "delivery-error";
 
 /** The exact, exhaustive shape sent off-machine. No other serializer exists. */
 export interface WebhookPayload {
@@ -228,8 +230,34 @@ async function deliverTarget(
   if (!urlAllowed(target.url, allowHttp)) {
     return logLine(ev, OUTCOME_SKIP, target.name, SKIP_REASON_HTTP);
   }
-  const req = FORMATTERS[target.provider](ev, target.headers ?? {});
+  const formatter = FORMATTERS[target.provider];
+  if (formatter === undefined) {
+    return logLine(ev, OUTCOME_SKIP, target.name, SKIP_REASON_UNKNOWN_PROVIDER);
+  }
+  const req = formatter(ev, target.headers ?? {});
   return attemptDelivery(ev, target, req, fetchFn);
+}
+
+/**
+ * Isolate one target: any unexpected throw becomes a logged skip line so a
+ * single malformed sibling can never reject the batch (see {@link fireWebhooks}).
+ */
+async function deliverTargetSafe(
+  ev: HollrEvent,
+  target: WebhookTarget,
+  allowHttp: boolean,
+  fetchFn: typeof fetch,
+): Promise<string> {
+  try {
+    return await deliverTarget(ev, target, allowHttp, fetchFn);
+  } catch {
+    return logLine(ev, OUTCOME_SKIP, target.name, SKIP_REASON_DELIVERY_ERROR);
+  }
+}
+
+/** A target matches only when `events` is a real array containing the event. */
+function targetMatches(target: WebhookTarget, event: EventName): boolean {
+  return Array.isArray(target.events) && target.events.includes(event);
 }
 
 function logLine(
@@ -278,9 +306,9 @@ export async function fireWebhooks(
 ): Promise<void> {
   const fetchFn = opts.fetchFn ?? fetch;
   const logPath = opts.logPath ?? join(hollrHome(), LOG_FILE);
-  const matched = targets.filter((target) => target.events.includes(ev.event));
+  const matched = targets.filter((target) => targetMatches(target, ev.event));
   const lines = await Promise.all(
-    matched.map((target) => deliverTarget(ev, target, opts.allowHttp, fetchFn)),
+    matched.map((target) => deliverTargetSafe(ev, target, opts.allowHttp, fetchFn)),
   );
   appendLog(logPath, lines);
 }
