@@ -159,8 +159,18 @@ function readTail(path: string): string | null {
       const start = Math.max(0, size - MAX_TRANSCRIPT_BYTES);
       const length = size - start;
       const buffer = Buffer.alloc(length);
-      readSync(fd, buffer, 0, length, start);
-      return buffer.toString("utf8");
+      // readSync may return a short count on a single call; loop until the whole
+      // range is read, else the unfilled tail stays NUL and corrupts the last
+      // (newest) assistant line — exactly the one read-aloud wants.
+      let offset = 0;
+      while (offset < length) {
+        const read = readSync(fd, buffer, offset, length - offset, start + offset);
+        if (read === 0) {
+          break;
+        }
+        offset += read;
+      }
+      return buffer.subarray(0, offset).toString("utf8");
     } finally {
       closeSync(fd);
     }

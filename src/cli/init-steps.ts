@@ -126,12 +126,22 @@ function agentOption(adapter: Adapter, detection: Detection): InitChoice<string>
   return { value: adapter.id, label: `${adapter.title} — ${adapter.tagline}`, hint };
 }
 
-/** Serialize + write the global config, then chmod-600 it when it holds secrets. */
+const CONFIG_MODE = 0o600;
+
+/**
+ * Serialize + write the global config at mode 0600 so it is owner-only from the
+ * instant it is created (no world-readable window before hardening). `mode` only
+ * applies on creation, so `hardenConfig` still chmods a pre-existing file that
+ * gained secrets on a re-run.
+ */
 function writeGlobalConfig(config: HollrConfig): string {
   const home = hollrHome();
   mkdirSync(home, { recursive: true });
   const path = join(home, CONFIG_FILE);
-  writeFileSync(path, `${JSON.stringify(config, null, JSON_INDENT)}\n`, "utf8");
+  writeFileSync(path, `${JSON.stringify(config, null, JSON_INDENT)}\n`, {
+    encoding: "utf8",
+    mode: CONFIG_MODE,
+  });
   hardenConfig(config.webhooks);
   return path;
 }

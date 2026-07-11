@@ -1,9 +1,9 @@
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -79,6 +79,16 @@ describe("wireJsonFile", () => {
     expect(ledger[0]?.ledgerKey).toBe("cc-settings");
     expect(ledger[0]?.before).toBeNull();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "should_write_the_ledger_owner_only_0600_since_it_copies_foreign_secrets",
+    () => {
+      const path = target("config.json");
+      wireJsonFile(path, ADD_HOOK, "cc-settings").apply();
+      const mode = statSync(join(hollrHomeDir, "wired.json")).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
 
   it("should_be_idempotent_on_second_wire_with_no_diff", () => {
     const path = target("config.json");

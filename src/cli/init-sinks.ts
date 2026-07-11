@@ -188,9 +188,7 @@ async function collectHeaders(io: InitIo): Promise<Record<string, string>> {
 }
 
 /** Gather one webhook target, or `null` when no valid URL was supplied. */
-async function collectOneWebhook(
-  io: InitIo,
-): Promise<{ target: WebhookTarget; allowHttp: boolean } | null> {
+async function collectOneWebhook(io: InitIo): Promise<WebhookTarget | null> {
   const provider = await io.select<WebhookProvider>({
     message: "Webhook provider",
     options: PROVIDERS.map((value) => ({ value, label: value })),
@@ -221,30 +219,34 @@ async function collectOneWebhook(
   if (Object.keys(headers).length > 0) {
     target.headers = headers;
   }
-  return { target, allowHttp: resolved.allowHttp };
+  // The http opt-in is scoped to THIS target, never a config-wide flag, so
+  // opting one insecure endpoint in can never silently permit another.
+  if (resolved.allowHttp) {
+    target.allowHttp = true;
+  }
+  return target;
 }
 
 /**
  * Loop the webhook builder until the user declines to add another. Seeded with
  * the user's existing targets (add-only) so re-running init never drops the
- * webhooks — and their auth headers — they already configured.
+ * webhooks — and their auth headers — they already configured. Each target
+ * carries its own `allowHttp`; there is no config-wide http flag to widen.
  */
 async function collectWebhooks(
   io: InitIo,
   existing: HollrConfig,
-): Promise<{ targets: WebhookTarget[]; allowHttp: boolean }> {
+): Promise<WebhookTarget[]> {
   const targets: WebhookTarget[] = existing.webhooks.map((target) => structuredClone(target));
-  let allowHttp = existing.allowHttp;
   let add = await io.confirm({ message: "Add a webhook?", initialValue: false });
   while (add) {
     const built = await collectOneWebhook(io);
     if (built !== null) {
-      targets.push(built.target);
-      allowHttp = allowHttp || built.allowHttp;
+      targets.push(built);
     }
     add = await io.confirm({ message: "Add another webhook?", initialValue: false });
   }
-  return { targets, allowHttp };
+  return targets;
 }
 
 /**
@@ -265,8 +267,8 @@ export async function collectSinkConfig(
   const quiet = await collectQuietHours(io, existing);
   config.quietHours = quiet.spec;
   config.quietHoursWebhooks = quiet.webhooks;
-  const webhooks = await collectWebhooks(io, existing);
-  config.webhooks = webhooks.targets;
-  config.allowHttp = webhooks.allowHttp;
+  // Per-target `allowHttp` now carries the opt-in; the root flag stays as the
+  // cloned `existing` value (a legacy fallback only) and is never widened here.
+  config.webhooks = await collectWebhooks(io, existing);
   return config;
 }
