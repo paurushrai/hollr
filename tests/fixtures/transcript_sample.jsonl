@@ -1,4 +1,0 @@
-{"type":"user","message":{"content":[{"type":"text","text":"do the thing"}]}}
-{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."}]}}
-{"type":"user","message":{"content":[{"type":"text","text":"ok"}]}}
-{"type":"assistant","message":{"content":[{"type":"text","text":"All done."},{"type":"text","text":"Tests pass."}]}}

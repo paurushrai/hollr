@@ -1,0 +1,32 @@
+{
+  "name": "hollr",
+  "version": "0.2.0",
+  "description": "Voice, notification, and webhook awareness for CLI coding agents — hollers when your agent is done or needs you.",
+  "type": "module",
+  "bin": {
+    "hollr": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "scripts/helper"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
