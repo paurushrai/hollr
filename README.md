@@ -18,8 +18,21 @@ run `/hollr setup` after installing.
 Then in any session:
 
 ```
+/hollr doctor    # verify prerequisites are present (also runs automatically at the start of setup)
 /hollr setup     # first-run wizard — choose what you hear, and when
 ```
+
+### Requirements / preflight
+
+Run `/hollr doctor` (or `bin/hollr-doctor`) any time to check:
+
+- **macOS** — required; hollr v1 voice + notifications are macOS-only
+- **Python 3** — required; ships with Xcode Command Line Tools
+- **`say` / `osascript`** — required; built into macOS, no install needed
+- **`afplay`** — optional; only needed for the alert-tone-before-voice option
+- **Claude Code CLI on PATH** — optional/informational
+
+Any failed required check prints an exact fix command where one exists.
 
 ## What you can configure
 

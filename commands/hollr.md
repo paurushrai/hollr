@@ -1,6 +1,6 @@
 ---
-description: Toggle hollr announcements for this project, check status, run the setup wizard, or pause/resume/stop read-aloud
-argument-hint: "[on|off|status|setup|pause|resume|stop]"
+description: Toggle hollr announcements for this project, check status, run the setup wizard, check prerequisites, or pause/resume/stop read-aloud
+argument-hint: "[on|off|status|setup|doctor|pause|resume|stop]"
 ---
 
 # /hollr — voice + notification control
@@ -74,7 +74,35 @@ Read global config + project override + mute flag and report concisely:
 - done mode / needs_input mode / voice name + rate / quiet hours
   (effective values = defaults ← global ← project override)
 
+## `doctor` — check prerequisites
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-doctor
+```
+
+Run it, then summarize the results to the user (don't just paste the raw
+output): which checks passed, which required checks failed and why, and
+which optional ones are missing. For each **failed** check that has a
+`fix` command:
+- If the fix is exactly `xcode-select --install` (macOS's own GUI
+  installer — safe, no sudo, no third-party package manager), ask the
+  user via AskUserQuestion whether to run it now. Only run it if they say
+  yes.
+- For every other fix (e.g. the Claude Code docs URL), just show the
+  command/link and tell the user they can run or open it in a separate
+  terminal. Never auto-run installers, `sudo`, or package managers
+  yourself.
+
 ## `setup` — interactive wizard
+
+**Step 0 — run the doctor first.** Run
+`python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-doctor` exactly as in the
+`doctor` section above. If all required prerequisites are present,
+continue silently into Step 1. If any required prerequisite is missing,
+warn the user with the specific failures and fixes, then ask (via
+AskUserQuestion) whether to continue configuring anyway or stop here to
+fix prerequisites first. If they choose to stop, do not proceed past this
+step.
 
 Ask the user these questions ONE AT A TIME (use the AskUserQuestion tool
 when available). Show current values as defaults if config already exists.
