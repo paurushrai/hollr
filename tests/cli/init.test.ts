@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
-import type { HollrConfig } from "../../src/core/config.ts";
+import type { Activation, HollrConfig } from "../../src/core/config.ts";
 import { DEFAULTS } from "../../src/core/config.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { InitChoice, InitDeps, InitIo } from "../../src/cli/init-steps.ts";
@@ -57,6 +57,8 @@ class ScriptIo implements InitIo {
   confirmQueue: boolean[] = [];
   notes: string[] = [];
   lastMultiselectHints: string[] = [];
+  /** Every `select` call in order, so tests can inspect a specific prompt's seed. */
+  selectCalls: Array<{ message: string; initialValue?: string }> = [];
 
   multiselect<T extends string>(opts: {
     message: string;
@@ -77,7 +79,7 @@ class ScriptIo implements InitIo {
     options: InitChoice<T>[];
     initialValue?: T;
   }): Promise<T> {
-    void opts;
+    this.selectCalls.push({ message: opts.message, initialValue: opts.initialValue });
     const next = this.selectQueue.shift();
     if (next === undefined) {
       throw new Error("no scripted select answer");
@@ -207,8 +209,12 @@ function configuredConfig(): HollrConfig {
   };
 }
 
-/** Queue answers for the default sink flow (all defaults, no webhooks). */
-function scriptDefaultSinks(io: ScriptIo): void {
+/**
+ * Queue answers for the activation prompt (runs between stepAgents and
+ * collectSinkConfig) plus the default sink flow (all defaults, no webhooks).
+ */
+function scriptDefaultSinks(io: ScriptIo, activation: Activation = "all"): void {
+  io.selectQueue.push(activation); // "When should hollr speak up?"
   io.selectQueue.push("announce", "announce", "notify"); // done/blocked/error modes
   io.confirmQueue.push(false); // enumerate voices? no
   io.textQueue.push(""); // sound name -> none
@@ -379,6 +385,7 @@ describe("runInit", () => {
     const adapter = makeAdapter({ id: "a1", installed: false }, { wire: vi.fn(), unwire: vi.fn() });
     const io = new ScriptIo();
     io.multiselectQueue.push([]); // wire no agents
+    io.selectQueue.push("all"); // "When should hollr speak up?" (accept existing)
     io.selectQueue.push("silent", "announce", "notify"); // accept existing modes
     io.confirmQueue.push(false); // choose installed voices? no -> OS default
     io.textQueue.push(""); // sound -> none
@@ -394,6 +401,31 @@ describe("runInit", () => {
     expect(config.events.done.mode).toBe("silent");
     // rateWpm is never prompted: proves the base is the existing config, not DEFAULTS.
     expect(config.voice.rateWpm).toBe(240);
+  });
+
+  it("stores the chosen activation from setup", async () => {
+    const io = new ScriptIo();
+    io.multiselectQueue.push([]); // wire no agents
+    scriptDefaultSinks(io, "opt-in"); // "speak up" select -> "opt-in"
+    io.confirmQueue.push(false); // preview? no
+
+    await runInit(baseDeps(io, []), { yes: false });
+
+    const config = readWrittenConfig();
+    expect(config.activation).toBe("opt-in");
+  });
+
+  it("seeds the initial activation from an existing config on re-run", async () => {
+    writeExistingConfig({ ...structuredClone(DEFAULTS), activation: "opt-in" });
+    const io = new ScriptIo();
+    io.multiselectQueue.push([]); // wire no agents
+    scriptDefaultSinks(io, "opt-in"); // answer doesn't matter for this assertion
+    io.confirmQueue.push(false); // preview? no
+
+    await runInit(baseDeps(io, []), { yes: false });
+
+    const activationCall = io.selectCalls.find((call) => call.message.includes("speak up"));
+    expect(activationCall?.initialValue).toBe("opt-in");
   });
 });
 

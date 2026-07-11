@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { listWiredKeys } from "../adapters/diffwire.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
-import type { HollrConfig } from "../core/config.ts";
+import type { Activation, HollrConfig } from "../core/config.ts";
 import { DEFAULTS, hollrHome, isConfigured, loadConfig } from "../core/config.ts";
 import { allRequiredOk, checkAll, type Check } from "../core/doctor.ts";
 import type { Platform } from "../platform/index.ts";
@@ -248,6 +248,22 @@ async function stepAgents(deps: InitDeps): Promise<void> {
   }
 }
 
+/** Ask, in plain words, whether hollr is on everywhere or only where turned on. */
+async function stepActivation(io: InitIo, current: Activation): Promise<Activation> {
+  const choice = await io.select<Activation>({
+    message: "When should hollr speak up?",
+    options: [
+      { value: "all", label: "In every project — turn it off where you don't want it" },
+      { value: "opt-in", label: "Only in projects I turn on" },
+    ],
+    initialValue: current,
+  });
+  if (choice === "opt-in") {
+    io.note("hollr will stay quiet until you run `hollr on` inside a project.");
+  }
+  return choice;
+}
+
 /** Print a summary and offer to preview with `hollr test`. */
 async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
   const lines = [
@@ -305,7 +321,9 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
   // prompts; loadConfig returns DEFAULTS when nothing exists, so this is the
   // universal base and never destroys the user's current sinks.
   const existing = loadConfig(process.cwd());
+  const activation = await stepActivation(deps.io, existing.activation);
   const config = await collectSinkConfig(deps.io, deps.enumerateVoices, existing);
+  config.activation = activation;
   const configPath = writeGlobalConfig(config);
   const runTest = await stepSummary(deps.io, config);
   return { runTest, configPath };
