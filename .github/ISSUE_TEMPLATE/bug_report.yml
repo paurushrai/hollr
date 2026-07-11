@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in hollr isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! For **security** issues, do not file here — see
+        [SECURITY.md](https://github.com/paurushrai/hollr/security).
+  - type: input
+    id: version
+    attributes:
+      label: hollr version
+      description: "Output of `hollr --version`"
+      placeholder: "hollr 0.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent
+      description: Which coding agent (Claude Code, Codex, Gemini CLI, …) or `hollr run`?
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include exact error output if any.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps. Output of `hollr doctor` and `hollr status` helps.
+    validations:
+      required: true
