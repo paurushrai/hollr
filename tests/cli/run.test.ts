@@ -116,6 +116,9 @@ function makeHarness(): Harness {
       (ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void
     >(),
     awaitWebhooks: () => Promise.resolve(),
+    // Default: the grace timer never fires, so the stdout drain always wins the
+    // race. Tests that exercise the grace path override this to resolve.
+    delay: () => new Promise<void>(() => {}),
   };
   return {
     deps,
@@ -347,6 +350,44 @@ describe("runWrapper stream mode", () => {
     child().exit(0);
     await promise;
     expect(spokenText(speak)).toBe("Hi 😀 there");
+  });
+
+  it("should_resolve_with_exit_code_when_stdout_never_ends_and_grace_elapses", async () => {
+    // The regression guard. In stream mode stdio is ["inherit","pipe","inherit"],
+    // so a grandchild (dev server / watcher) the agent spawns inherits and holds
+    // the stdout write end open. When the agent exits, stdout "end" NEVER fires,
+    // so `drained` never resolves. The bounded grace timer must win the race and
+    // let the wrapper resolve with the child's exit code — it must NOT hang.
+    configureGlobal();
+    const { deps, child } = makeHarness();
+    deps.delay = (): Promise<void> => Promise.resolve(); // grace fires immediately
+    const promise = runWrapper(
+      ["--announce-stream", "cursor", "--", "cursor-agent"],
+      deps,
+    );
+    child().exit(0); // stdout "end" is deliberately never emitted
+    const code = await promise; // must resolve, not hang
+    expect(code).toBe(0);
+  });
+
+  it("should_let_drain_win_over_the_grace_timer_when_stdout_ends_first", async () => {
+    // The prior regression fix must stay green: when stdout ends promptly, the
+    // drain wins the race and the final result line is captured in full — even
+    // when it arrives after exit. The grace timer here never fires.
+    configureGlobal({ events: { done: { mode: "readaloud" } } });
+    const fixture = readFileSync(FIXTURE_PATH, "utf8");
+    const { deps, speak, child } = makeHarness();
+    deps.delay = (): Promise<void> => new Promise<void>(() => {}); // never fires
+    const promise = runWrapper(
+      ["--announce-stream", "cursor", "--", "cursor-agent"],
+      deps,
+    );
+    child().exit(0); // exits before the result-bearing chunk is processed
+    child().pushStdout(fixture); // result arrives after exit
+    child().endStdout(); // drain wins the race -> full capture
+    const code = await promise;
+    expect(code).toBe(0);
+    expect(spokenText(speak)).toBe("The answer is 42.");
   });
 
   it("should_speak_the_announce_line_not_the_transcript_when_mode_is_announce", async () => {

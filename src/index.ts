@@ -108,6 +108,17 @@ function realSpawn(command: string, args: string[], mode: StdioMode): WrapperChi
   return spawn(command, args, { stdio });
 }
 
+/**
+ * Bounded stream-drain grace timer for `hollr run`. `unref` lets the process
+ * exit the instant the drain wins, and guarantees the timer itself never keeps
+ * the event loop alive.
+ */
+function realDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
+}
+
 /** Real `hollr run` dependencies: the live spawn + sinks + stdout tee + clock. */
 function realWrapperDeps(): WrapperDeps {
   return {
@@ -117,6 +128,7 @@ function realWrapperDeps(): WrapperDeps {
     },
     cwd: process.cwd(),
     now: () => new Date(),
+    delay: realDelay,
     ...realSinks(),
   };
 }

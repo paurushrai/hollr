@@ -44,6 +44,15 @@ const EVENT_ERROR: EventName = "error";
 
 const EXIT_OK = 0;
 const EXIT_USAGE = 2;
+/**
+ * Upper bound (ms) on how long, after the child exits, the wrapper waits for
+ * stdout to end before finishing anyway. Stream stdio is `["inherit","pipe",
+ * "inherit"]`, so a grandchild the agent spawns (dev server / watcher) inherits
+ * and holds the pipe's write end open — stdout `end` then never fires and an
+ * unbounded wait would HANG. The `result` line almost always precedes exit, so
+ * this grace only ever loses whatever was still buffered past the child's exit.
+ */
+const STREAM_DRAIN_GRACE_MS = 2000;
 /** No child code exists when spawn itself fails; mirror shells' "not found". */
 const SPAWN_FAILED = 127;
 /** The child was terminated by a signal (exit code null); treat as an error. */
@@ -83,6 +92,12 @@ export interface WrapperDeps {
   notify(argv: string[]): void;
   webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
   awaitWebhooks(): Promise<void>;
+  /**
+   * Resolve after `ms` — the injectable stream-drain grace timer. Injected so
+   * tests drive it deterministically; the real impl uses an `unref`'d timeout so
+   * the timer itself never keeps the process alive.
+   */
+  delay(ms: number): Promise<void>;
 }
 
 interface ParsedRun {
@@ -289,10 +304,13 @@ async function finishExit(
 
 /**
  * Resolve with the child's exit code once it exits (or fails to spawn). In
- * stream mode the emit is deferred until stdout has fully drained
+ * stream mode the emit is deferred until stdout drains
  * ({@link StreamCapture.drained}) — Node does not guarantee stdout `data`/`end`
  * precede `exit`, so emitting on `exit` alone could miss the final `result`
- * line. A spawn `error` short-circuits (there is no transcript to await).
+ * line. But the drain is bounded: on exit it RACES `drained` against a
+ * {@link STREAM_DRAIN_GRACE_MS} timer so a grandchild holding stdout open can
+ * never hang the wrapper — whichever wins, the child's exit code is returned.
+ * A spawn `error` short-circuits (there is no transcript to await).
  */
 function awaitChild(
   child: WrapperChild,
@@ -312,12 +330,17 @@ function awaitChild(
         resolve(code);
       });
     };
-    const drained = capture !== null ? capture.drained : Promise.resolve();
     child.on("error", () => {
       finish(SPAWN_FAILED);
     });
     child.on("exit", (code) => {
-      void drained.then(() => {
+      // Plain mode has no capture (drain resolves instantly, no timer needed);
+      // stream mode bounds the drain wait so a lingering stdout can't hang us.
+      const graced =
+        capture === null
+          ? Promise.resolve()
+          : Promise.race([capture.drained, deps.delay(STREAM_DRAIN_GRACE_MS)]);
+      void graced.then(() => {
         finish(code ?? SIGNAL_EXIT_CODE);
       });
     });
