@@ -20,7 +20,7 @@ DEFAULTS: dict = {
         "needs_input": {"mode": "announce"},
     },
     "voice": {"engine": "system", "name": None, "rate_wpm": 190},
-    "notify": {"desktop": True},
+    "notify": {"desktop": True, "sound": None},
     "readaloud": {"max_chars": 1200, "strip_code": True},
     "quiet_hours": None,
 }

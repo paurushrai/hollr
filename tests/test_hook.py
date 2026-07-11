@@ -148,6 +148,41 @@ def test_announce_respects_desktop_false(tmp_path, monkeypatch):
     notify.assert_not_called()
 
 
+def test_sound_plays_before_voice_when_configured(tmp_path, monkeypatch):
+    _configured(tmp_path, monkeypatch, {"notify": {"desktop": True, "sound": "Glass"}})
+    with patch.object(hollr_hook.speech, "speak") as speak, \
+         patch.object(hollr_hook.speech, "notify") as notify:
+        hollr_hook.handle(_payload("payload_stop.json"), NOW)
+    speak.assert_called_once()
+    assert speak.call_args.kwargs.get("sound") == "Glass"
+    notify.assert_called_once()
+
+
+def test_quiet_hours_suppress_sound_and_voice_keep_notify(tmp_path, monkeypatch):
+    _configured(tmp_path, monkeypatch, {"quiet_hours": "22:00-08:00", "notify": {"desktop": True, "sound": "Glass"}})
+    with patch.object(hollr_hook.speech, "speak") as speak, \
+         patch.object(hollr_hook.speech, "notify") as notify, \
+         patch.object(hollr_hook.speech, "play_sound") as play_sound:
+        hollr_hook.handle(_payload("payload_stop.json"), QUIET_NOW)
+    speak.assert_not_called()
+    play_sound.assert_not_called()
+    notify.assert_called_once()
+
+
+def test_notify_mode_with_sound_plays_sound_no_voice(tmp_path, monkeypatch):
+    _configured(tmp_path, monkeypatch, {
+        "events": {"done": {"mode": "notify"}, "needs_input": {"mode": "notify"}},
+        "notify": {"desktop": True, "sound": "Glass"},
+    })
+    with patch.object(hollr_hook.speech, "speak") as speak, \
+         patch.object(hollr_hook.speech, "notify") as notify, \
+         patch.object(hollr_hook.speech, "play_sound") as play_sound:
+        hollr_hook.handle(_payload("payload_stop.json"), NOW)
+    speak.assert_not_called()
+    play_sound.assert_called_once_with("Glass")
+    notify.assert_called_once()
+
+
 def test_unknown_event_or_bad_cwd_is_noop(tmp_path, monkeypatch):
     _configured(tmp_path, monkeypatch)
     with patch.object(hollr_hook.speech, "speak") as speak, \

@@ -14,6 +14,8 @@ def test_load_config_returns_defaults_when_no_files(tmp_path, monkeypatch):
     assert cfg["events"]["done"]["mode"] == "announce"
     assert cfg["voice"]["name"] is None
     assert cfg["quiet_hours"] is None
+    assert cfg["notify"]["desktop"] is True
+    assert cfg["notify"]["sound"] is None
 
 
 def test_load_config_merges_global_then_project(tmp_path, monkeypatch):

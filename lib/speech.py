@@ -4,6 +4,8 @@ that must never block or break the agent turn."""
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 
 MAX_SPEECH_CHARS = 2000
@@ -13,6 +15,12 @@ DEFAULT_RATE_WPM = 190
 
 # Values meaning "use the OS-configured default voice" instead of a named one.
 SYSTEM_VOICE_SENTINELS = frozenset({"", "system", "default"})
+
+SOUND_DIR = "/System/Library/Sounds"
+_SOUND_NAME_RE = re.compile(r"^[A-Za-z]+$")
+_PLAY_THEN_SAY = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hooks", "_play_then_say.py")
+)
 
 
 def _spawn(argv: list[str]) -> None:
@@ -27,7 +35,31 @@ def _spawn(argv: list[str]) -> None:
         pass  # missing binary / spawn failure must never surface into the hook
 
 
-def speak(text: str, voice: str | None = None, rate_wpm: int = DEFAULT_RATE_WPM) -> None:
+def _sound_path(name: str | None) -> str | None:
+    """Resolve a bare macOS system sound name to its .aiff path. Only
+    `^[A-Za-z]+$` names are accepted — anything else (path separators,
+    `..`, shell metacharacters, empty string) returns None, which blocks
+    path traversal and argument injection at the source."""
+    if not name or not _SOUND_NAME_RE.match(name):
+        return None
+    path = f"{SOUND_DIR}/{name}.aiff"
+    return path if os.path.isfile(path) else None
+
+
+def play_sound(name: str | None) -> None:
+    """Play a macOS system alert tone via `afplay`, detached. No-op if
+    `name` doesn't resolve to a real sound file."""
+    path = _sound_path(name)
+    if path:
+        _spawn(["afplay", path])
+
+
+def speak(
+    text: str,
+    voice: str | None = None,
+    rate_wpm: int = DEFAULT_RATE_WPM,
+    sound: str | None = None,
+) -> None:
     """Speak via macOS `say`, detached. `--` stops text becoming flags.
     A non-numeric/None rate_wpm (e.g. hand-edited config) falls back to the
     default rate instead of raising — a bad voice setting must never
@@ -35,13 +67,25 @@ def speak(text: str, voice: str | None = None, rate_wpm: int = DEFAULT_RATE_WPM)
 
     `voice` omitted, None, or one of SYSTEM_VOICE_SENTINELS (case-insensitive)
     means "use the OS-configured default voice" — `-v` is left off entirely
-    so `say` picks it up itself."""
+    so `say` picks it up itself.
+
+    `sound`, when it resolves to a real system alert tone, routes through
+    the detached `_play_then_say.py` helper so the tone plays fully BEFORE
+    the voice starts — never simultaneously — while this call still returns
+    immediately (the helper blocks internally, not the caller)."""
     if not text:
         return
     try:
         rate = int(rate_wpm)
     except (TypeError, ValueError):
         rate = DEFAULT_RATE_WPM
+
+    sound_path = _sound_path(sound)
+    if sound_path:
+        voice_arg = str(voice) if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS else ""
+        _spawn(["python3", _PLAY_THEN_SAY, sound_path, voice_arg, str(rate), text[:MAX_SPEECH_CHARS]])
+        return
+
     argv = ["say"]
     if voice and str(voice).strip().lower() not in SYSTEM_VOICE_SENTINELS:
         argv += ["-v", str(voice)]

@@ -1,3 +1,4 @@
+import os
 import subprocess
 from unittest.mock import patch
 
@@ -82,3 +83,49 @@ def test_speak_system_default_omits_voice_flag():
     with patch.object(subprocess, "Popen") as mock_popen:
         speech.speak("hi", voice="Alex")
     assert "-v" in _popen_argv(mock_popen)
+
+
+def test_sound_path_sanitizes():
+    expected = f"{speech.SOUND_DIR}/Glass.aiff"
+    if os.path.isfile(expected):
+        assert speech._sound_path("Glass") == expected
+    else:
+        assert speech._sound_path("Glass") is None
+    assert speech._sound_path("../../etc/passwd") is None
+    assert speech._sound_path("Glass; rm") is None
+    assert speech._sound_path("") is None
+
+
+def test_speak_with_sound_routes_through_helper():
+    fake_path = f"{speech.SOUND_DIR}/Glass.aiff"
+    with patch.object(subprocess, "Popen") as mock_popen, \
+         patch.object(speech, "_sound_path", return_value=fake_path):
+        speech.speak("hi", voice="Alex", rate_wpm=200, sound="Glass")
+    argv = _popen_argv(mock_popen)
+    assert argv[0] == "python3"
+    assert argv[1].endswith("_play_then_say.py")
+    assert argv[2] == fake_path
+    assert argv[3] == "Alex"
+    assert argv[4] == "200"
+    assert argv[5] == "hi"
+
+
+def test_speak_without_sound_uses_say_directly():
+    with patch.object(subprocess, "Popen") as mock_popen:
+        speech.speak("hi")
+    argv = _popen_argv(mock_popen)
+    assert argv[0] == "say"
+
+
+def test_play_sound_spawns_afplay():
+    fake_path = f"{speech.SOUND_DIR}/Glass.aiff"
+    with patch.object(subprocess, "Popen") as mock_popen, \
+         patch.object(speech, "_sound_path", return_value=fake_path):
+        speech.play_sound("Glass")
+    argv = _popen_argv(mock_popen)
+    assert argv == ["afplay", fake_path]
+
+    with patch.object(subprocess, "Popen") as mock_popen, \
+         patch.object(speech, "_sound_path", return_value=None):
+        speech.play_sound("nope; rm")
+    mock_popen.assert_not_called()

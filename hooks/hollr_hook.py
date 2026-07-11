@@ -46,10 +46,14 @@ def _readaloud_text(payload: dict, cfg: dict) -> str | None:
 
 def _deliver(mode: str, line: str, spoken: str, cfg: dict, quiet: bool) -> None:
     voice = cfg.get("voice", {})
-    desktop = bool(cfg.get("notify", {}).get("desktop", True))
+    notify_cfg = cfg.get("notify", {})
+    desktop = bool(notify_cfg.get("desktop", True))
+    sound = notify_cfg.get("sound")
     if mode in ("announce", "readaloud") and not quiet:
         speech.speak(spoken, voice=voice.get("name"),
-                     rate_wpm=voice.get("rate_wpm", 190))
+                     rate_wpm=voice.get("rate_wpm", 190), sound=sound)
+    elif mode == "notify" and sound and not quiet:
+        speech.play_sound(sound)
     if mode == "notify" or ((mode in ("announce", "readaloud")) and desktop):
         speech.notify(TITLE, line)
 
