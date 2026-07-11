@@ -120,19 +120,59 @@ function notifyLine(): string {
   return `notify = [${items}]`;
 }
 
-/** Replace the existing notify line in place; unchanged text means no-op. */
-function replaceNotifyLine(
-  lines: string[],
-  index: number,
-  target: string,
-  original: string,
-): string {
-  if (lines[index] === target) {
-    return original;
+/** Net `[`-vs-`]` count for a line, used to track array-value bracket depth. */
+function bracketDelta(line: string): number {
+  const opens = (line.match(/\[/g) ?? []).length;
+  const closes = (line.match(/\]/g) ?? []).length;
+  return opens - closes;
+}
+
+/**
+ * Index of the last line of the `notify` assignment beginning at `start`.
+ * A scalar (`notify = "x"`) or single-line array (`notify = [...]`) ends on
+ * `start`; a multi-line array continues until bracket depth returns to zero.
+ * An unterminated array consumes through the top-level region (`limit`).
+ */
+function notifyEndIndex(lines: string[], start: number, limit: number): number {
+  let depth = 0;
+  for (let index = start; index < limit; index += 1) {
+    depth += bracketDelta(lines[index] ?? "");
+    if (depth <= 0) {
+      return index;
+    }
   }
+  return limit - 1;
+}
+
+/**
+ * Replace the whole `notify` assignment spanning `[start, end]` with the single
+ * `target` line, preserving everything before and after it.
+ */
+function replaceNotifyRange(
+  lines: string[],
+  start: number,
+  end: number,
+  target: string,
+): string {
   const next = [...lines];
-  next[index] = target;
+  next.splice(start, end - start + 1, target);
   return next.join(NEWLINE);
+}
+
+/** First table-header line index, or `lines.length` when there is none. */
+function firstTableHeaderIndex(lines: string[]): number {
+  const index = lines.findIndex((line) => TABLE_HEADER_PATTERN.test(line));
+  return index === -1 ? lines.length : index;
+}
+
+/** Index of the top-level `notify` key (before any table header), or `-1`. */
+function topLevelNotifyIndex(lines: string[], limit: number): number {
+  for (let index = 0; index < limit; index += 1) {
+    if (NOTIFY_KEY_PATTERN.test(lines[index] ?? "")) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -164,9 +204,10 @@ function patchNotify(original: string | null): string {
     return `${target}${NEWLINE}`;
   }
   const lines = original.split(NEWLINE);
-  const index = lines.findIndex((line) => NOTIFY_KEY_PATTERN.test(line));
-  if (index !== -1) {
-    return replaceNotifyLine(lines, index, target, original);
+  const limit = firstTableHeaderIndex(lines);
+  const start = topLevelNotifyIndex(lines, limit);
+  if (start !== -1) {
+    return replaceNotifyRange(lines, start, notifyEndIndex(lines, start, limit), target);
   }
   return insertNotifyLine(original, lines, target);
 }

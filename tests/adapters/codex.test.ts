@@ -192,6 +192,43 @@ describe("codex.wire config.toml notify", () => {
     expect(text).toContain('model = "gpt-5"');
   });
 
+  it("should_replace_a_multi_line_notify_array_leaving_valid_toml", async () => {
+    writeConfig('notify = [\n  "old-notifier"\n]\nmodel = "gpt-5"\n');
+    await codex.wire(deps());
+    const text = readConfig();
+    // The old multi-line array must be fully removed — no orphans.
+    expect(text).not.toContain("old-notifier");
+    expect(text).toContain(NOTIFY_LINE);
+    expect(text).toContain('model = "gpt-5"');
+    // Exactly one `notify =` and one `]` (the one inside the hollr line).
+    expect(text.split("notify =").length).toBe(2);
+    expect((text.match(/\]/g) ?? []).length).toBe(1);
+    // No dangling continuation line or stray closing bracket survives.
+    const lines = text.split("\n");
+    expect(lines).not.toContain('  "old-notifier"');
+    expect(lines.some((line) => line.trim() === "]")).toBe(false);
+  });
+
+  it("should_be_idempotent_after_replacing_a_multi_line_array", async () => {
+    writeConfig('notify = [\n  "old-notifier"\n]\nmodel = "gpt-5"\n');
+    await codex.wire(deps());
+    const second = await codex.wire(deps());
+    expect(second.changed).toBe(false);
+    expect(second.diff).toBe("");
+  });
+
+  it("should_not_replace_a_notify_inside_a_table_section", async () => {
+    writeConfig('model = "gpt-5"\n\n[profile.ci]\nnotify = ["scoped-notifier"]\n');
+    await codex.wire(deps());
+    const text = readConfig();
+    // A notify nested in a table is left untouched...
+    expect(text).toContain('notify = ["scoped-notifier"]');
+    // ...and hollr's top-level notify is inserted before the section.
+    expect(text).toContain(NOTIFY_LINE);
+    expect(text.indexOf(NOTIFY_LINE)).toBeLessThan(text.indexOf("[profile.ci]"));
+    expect(text.indexOf(NOTIFY_LINE)).toBeLessThan(text.indexOf("scoped-notifier"));
+  });
+
   it("should_be_idempotent_on_a_second_wire", async () => {
     await codex.wire(deps());
     const second = await codex.wire(deps());
