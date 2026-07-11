@@ -1,22 +1,22 @@
 # hollr
 
-**hollr shouts when your CLI coding agent finishes or needs you.**
+**hollr calls out the moment your CLI coding agent finishes or needs you.**
 
-You kick off a long agent run, switch to something else, and lose track of
-when it's done — or when it stalled waiting on your input. hollr closes that
-gap: when your agent finishes a turn or blocks on a prompt, it announces it out
-loud, reads the response aloud, fires a desktop notification, plays a sound,
-and/or pings a webhook on your phone.
+Kick off a long agent run, switch to something else, and stop babysitting the
+terminal. The second your agent finishes a turn — or stalls waiting on your
+input — hollr speaks up: it reads the response aloud, fires a desktop
+notification, plays a sound, and/or pings your phone. You get back to it exactly
+when it needs you — not a minute sooner, not ten minutes later.
 
-- **Local-first.** Voice, notifications, and sound never leave your machine.
-  The only thing that goes off-device is a webhook you configure yourself — and
-  that payload is metadata only (see [Privacy](#privacy)).
-- **Universal.** 8 agent integrations plus a wrapper (`hollr run`) that works
-  with *any* command, so a new or unsupported agent still gets done/error
-  announcements.
-- **No product code in your agent.** hollr wires each agent's own hook config to
-  call `hollr emit`, and every change is previewable and byte-reversible via
-  `hollr uninstall`.
+- **Local-first, zero telemetry.** Voice, notifications, and sound never leave
+  your machine. The only thing that ever goes off-device is a webhook you set up
+  yourself — and that payload is metadata only (see [Privacy](#privacy)).
+- **Works with every agent.** 8 first-class integrations — Claude Code, Codex,
+  Gemini CLI, Copilot CLI, Cursor, opencode, Antigravity, Amp — plus a universal
+  wrapper (`hollr run`) that adds done/error alerts to *any* command.
+- **Nothing invasive in your setup.** hollr wires each agent's own hook config
+  to call `hollr emit` — no SDK, no background daemon. Every change is previewed
+  before it's written and is byte-reversible with `hollr uninstall`.
 
 ## Install
 

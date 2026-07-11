@@ -1,7 +1,41 @@
 {
   "name": "hollr-cli",
   "version": "0.2.0",
-  "description": "Voice, notification, and webhook awareness for CLI coding agents — shouts when your agent finishes or needs you.",
+  "description": "Voice, desktop, and webhook notifications for CLI coding agents (Claude Code, Codex, Gemini, Copilot, Cursor & more) — calls out the moment your agent finishes or needs you.",
+  "keywords": [
+    "cli",
+    "notifications",
+    "desktop-notifications",
+    "text-to-speech",
+    "tts",
+    "voice",
+    "coding-agent",
+    "ai-agent",
+    "agent-notifications",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "copilot-cli",
+    "cursor",
+    "opencode",
+    "webhook",
+    "ntfy",
+    "pushover",
+    "slack",
+    "developer-tools",
+    "productivity",
+    "terminal",
+    "hooks"
+  ],
+  "homepage": "https://github.com/paurushrai/hollr#readme",
+  "bugs": {
+    "url": "https://github.com/paurushrai/hollr/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paurushrai/hollr.git"
+  },
+  "author": "Paurush Rai",
   "type": "module",
   "bin": {
     "hollr": "dist/index.js"
