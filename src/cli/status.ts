@@ -155,7 +155,6 @@ function projectSection(model: StatusModel): string {
     scopeLine(model.activation),
     projectStateLine(model),
     quietLine(model.quiet),
-    `Muted: ${model.muted ? "yes" : "no"}`,
     `Pause/resume: ${model.canPauseResume ? "supported" : "unsupported"}`,
   ].join("\n");
 }

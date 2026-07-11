@@ -150,11 +150,13 @@ bind them to system hotkeys:
 | `hollr emit` | Internal: agents' hooks call this to report an event (`--payload-stdin` / `--payload-argv`). Never breaks a turn. |
 | `hollr run -- <cmd>` | Universal wrapper: run any command and announce done/error on exit. `--announce-stream cursor` for Cursor read-aloud. |
 | `hollr test` | Fire a synthetic event to verify your setup. `--show-payload` / `--webhook`. |
-| `hollr status` | Show the effective config, platform, and mute state for the current project. |
+| `hollr status` | Explain, in plain words, whether hollr is speaking here and why — scope, this project's state, and any active quiet. |
 | `hollr pause` | Pause the current read-aloud. |
 | `hollr resume` | Resume a paused read-aloud. |
 | `hollr stop` | Stop the current read-aloud. |
 | `hollr mute [on\|off]` | Mute/unmute all hollr output for the current project (toggles if no arg). |
+| `hollr on` / `hollr off` | Turn hollr on or off for the current project (aliases: `unmute` / `mute`). |
+| `hollr quiet [duration\|off]` | Quiet all projects for a while (`hollr quiet 30m`) or until `hollr quiet off`. |
 | `hollr doctor` | Check prerequisites (voice/notify/sound tools, detected agents) with exact fix commands. |
 | `hollr --version` | Print the version (`-v`). |
 

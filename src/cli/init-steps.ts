@@ -216,6 +216,9 @@ function wireSummary(adapter: Adapter): string {
   if (caps.slashCommand) {
     parts.push("/hollr command");
   }
+  if (parts.length === 0) {
+    return adapter.title;
+  }
   return `${adapter.title}: ${parts.join(", ")}`;
 }
 
@@ -230,7 +233,7 @@ async function wireAgent(deps: InitDeps, adapter: Adapter): Promise<void> {
     return;
   }
   deps.io.note(
-    `${wireSummary(adapter)}\nYou can undo this anytime with \`hollr off\`.`,
+    `${wireSummary(adapter)}\nSilence it here anytime with \`hollr off\`.`,
     `${adapter.title} — set up`,
   );
   const seeDiff = await deps.io.confirm({

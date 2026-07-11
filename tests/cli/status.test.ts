@@ -105,7 +105,7 @@ describe("runStatus report", () => {
     expect(text).toContain("22:00-07:00");
     expect(text).toContain("phone");
     expect(text).toContain("team");
-    expect(text).toContain("Muted: no");
+    expect(text).toContain("on for this project");
     // last-5 windowing: earliest line dropped, newest kept.
     expect(text).toContain("l6");
     expect(text).not.toContain("l1");
@@ -140,7 +140,7 @@ describe("runStatus report", () => {
     writeFileSync(join(hollrHomeDir, "projects", `${encodeCwd(process.cwd())}.muted`), "");
     const { io, out } = makeIo();
     runStatus(io);
-    expect(outText(out)).toContain("Muted: yes");
+    expect(outText(out)).toContain("off for this project");
   });
 
   it("should_report_pause_resume_capability", () => {
