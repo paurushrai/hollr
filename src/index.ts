@@ -19,7 +19,7 @@ import { allRequiredOk, checkAll, type Check } from "./core/doctor.ts";
 import type { EmitDeps } from "./cli/emit.ts";
 import { MAX_STDIN_BYTES, runEmit } from "./cli/emit.ts";
 import { runInitCli, runUninstallCli } from "./cli/init.ts";
-import { runMute } from "./cli/mute.ts";
+import { runMute, setProjectState } from "./cli/mute.ts";
 import type { StdioMode, WrapperChild, WrapperDeps } from "./cli/run.ts";
 import { runWrapper } from "./cli/run.ts";
 import type { TestDeps } from "./cli/test.ts";
@@ -51,7 +51,7 @@ const EXIT_ERROR = 1;
 const EXIT_USAGE = 2;
 
 const USAGE =
-  "usage: hollr <init|uninstall|emit|run|test|status|pause|resume|stop|mute|doctor> " +
+  "usage: hollr <init|uninstall|emit|run|test|status|on|off|quiet|pause|resume|stop|mute|doctor> " +
   "[options] (--version for version)";
 
 const MARK_OK = "✔";
@@ -229,6 +229,12 @@ export async function run(argv: string[]): Promise<number> {
       return emitControl(resumeReading());
     case "stop":
       return emitControl(stopReading());
+    case "on":
+      return setProjectState(true, process.cwd());
+    case "off":
+      return setProjectState(false, process.cwd());
+    case "unmute":
+      return setProjectState(true, process.cwd());
     case "mute":
       return runMute(rest, process.cwd());
     case "doctor":

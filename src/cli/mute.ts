@@ -15,10 +15,15 @@ import { projectLabel } from "../core/events.ts";
 
 const PROJECTS_DIR = "projects";
 const MUTED_SUFFIX = ".muted";
+const ENABLED_SUFFIX = ".enabled";
 const EXIT_OK = 0;
 
 function muteFlagPath(cwd: string): string {
   return join(hollrHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${MUTED_SUFFIX}`);
+}
+
+function enabledFlagPath(cwd: string): string {
+  return join(hollrHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
 }
 
 /** Desired mute state: `on` → true, `off` → false, anything else → toggle. */
@@ -52,17 +57,29 @@ function removeFlag(path: string): void {
   }
 }
 
-/** Apply the requested mute state and print the resulting state. */
-export function runMute(args: string[], cwd: string): number {
-  const muted = desiredState(args[0], cwd);
-  const path = muteFlagPath(cwd);
-  if (muted) {
-    createFlag(path);
+/**
+ * Set this project on or off by writing one marker and clearing the other, so
+ * `.muted` and `.enabled` are never both present. Setting the chosen marker
+ * uses `createFlag` (a write failure surfaces); clearing the other is
+ * best-effort. Prints the resulting state.
+ */
+export function setProjectState(on: boolean, cwd: string): number {
+  const mutedPath = muteFlagPath(cwd);
+  const enabledPath = enabledFlagPath(cwd);
+  if (on) {
+    createFlag(enabledPath);
+    removeFlag(mutedPath);
   } else {
-    removeFlag(path);
+    createFlag(mutedPath);
+    removeFlag(enabledPath);
   }
   const label = projectLabel(cwd);
-  const message = muted ? `hollr: muted ${label}` : `hollr: unmuted ${label}`;
-  process.stdout.write(`${message}\n`);
+  process.stdout.write(`hollr: ${on ? "on for" : "off for"} ${label}\n`);
   return EXIT_OK;
+}
+
+/** Legacy `hollr mute [on|off]`: maps onto {@link setProjectState}. */
+export function runMute(args: string[], cwd: string): number {
+  const muted = desiredState(args[0], cwd);
+  return setProjectState(!muted, cwd);
 }
