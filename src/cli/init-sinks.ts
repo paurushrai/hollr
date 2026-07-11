@@ -19,7 +19,6 @@ import type {
   WebhookProvider,
   WebhookTarget,
 } from "../core/config.ts";
-import { DEFAULTS } from "../core/config.ts";
 import type { InitIo } from "./init-steps.ts";
 
 /** Sentinel select value meaning "use the OS-configured default voice". */
@@ -41,28 +40,36 @@ const QUIET_HOURS_RE = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
 /** Injected voice enumeration: real impl spawns + parses; tests return a fixed list. */
 export type EnumerateVoices = () => string[];
 
-/** Ask the mode for every event, seeded with the current default. */
-async function collectModes(io: InitIo): Promise<Record<EventName, EventConfig>> {
-  const events = structuredClone(DEFAULTS.events);
+/** Ask the mode for every event, seeded from the user's current config. */
+async function collectModes(
+  io: InitIo,
+  existing: HollrConfig,
+): Promise<Record<EventName, EventConfig>> {
+  const events = structuredClone(existing.events);
   for (const event of EVENT_NAMES) {
     const mode = await io.select<Mode>({
       message: `How should "${event}" events be announced?`,
       options: MODES.map((value) => ({ value, label: value })),
-      initialValue: DEFAULTS.events[event].mode,
+      initialValue: existing.events[event].mode,
     });
     events[event] = { mode };
   }
   return events;
 }
 
-/** Offer OS-default voice or a live-enumerated pick; empty enumeration falls back. */
-async function collectVoice(io: InitIo, enumerate: EnumerateVoices): Promise<VoiceConfig> {
-  const voice = structuredClone(DEFAULTS.voice);
+/** Offer OS-default voice or a live-enumerated pick; seeded from the current voice. */
+async function collectVoice(
+  io: InitIo,
+  enumerate: EnumerateVoices,
+  existing: HollrConfig,
+): Promise<VoiceConfig> {
+  const voice = structuredClone(existing.voice);
   const pickInstalled = await io.confirm({
     message: "Choose from installed voices? (otherwise the OS default voice is used)",
-    initialValue: false,
+    initialValue: existing.voice.name !== null,
   });
   if (!pickInstalled) {
+    voice.name = null;
     return voice;
   }
   const names = enumerate();
@@ -76,25 +83,32 @@ async function collectVoice(io: InitIo, enumerate: EnumerateVoices): Promise<Voi
       { value: OS_DEFAULT_VOICE, label: "OS default" },
       ...names.map((name) => ({ value: name, label: name })),
     ],
-    initialValue: OS_DEFAULT_VOICE,
+    initialValue: existing.voice.name ?? OS_DEFAULT_VOICE,
   });
   voice.name = chosen === OS_DEFAULT_VOICE ? null : chosen;
   return voice;
 }
 
 /** A notification sound name, or `null` when the user leaves it blank. */
-async function collectSound(io: InitIo): Promise<string | null> {
+async function collectSound(io: InitIo, existing: HollrConfig): Promise<string | null> {
   const name = (
-    await io.text({ message: "Notification sound name (leave blank for none)" })
+    await io.text({
+      message: "Notification sound name (leave blank for none)",
+      initialValue: existing.notify.sound ?? "",
+    })
   ).trim();
   return name.length === 0 ? null : name;
 }
 
 /** Prompt (and re-prompt) for a valid quiet-hours window; blank means disabled. */
-async function promptQuietHours(io: InitIo): Promise<string | null> {
+async function promptQuietHours(io: InitIo, existing: HollrConfig): Promise<string | null> {
+  const seed = existing.quietHours ?? "";
   for (let attempt = 0; attempt < MAX_PROMPT_ATTEMPTS; attempt += 1) {
     const raw = (
-      await io.text({ message: "Quiet hours as HH:MM-HH:MM (leave blank for none)" })
+      await io.text({
+        message: "Quiet hours as HH:MM-HH:MM (leave blank for none)",
+        initialValue: seed,
+      })
     ).trim();
     if (raw.length === 0) {
       return null;
@@ -109,15 +123,16 @@ async function promptQuietHours(io: InitIo): Promise<string | null> {
 
 async function collectQuietHours(
   io: InitIo,
+  existing: HollrConfig,
 ): Promise<{ spec: string | null; webhooks: QuietHoursWebhooks }> {
-  const spec = await promptQuietHours(io);
+  const spec = await promptQuietHours(io, existing);
   if (spec === null) {
-    return { spec: null, webhooks: DEFAULTS.quietHoursWebhooks };
+    return { spec: null, webhooks: existing.quietHoursWebhooks };
   }
   const webhooks = await io.select<QuietHoursWebhooks>({
     message: "During quiet hours, webhooks should",
     options: QUIET_HOURS_OPTIONS.map((value) => ({ value, label: value })),
-    initialValue: DEFAULTS.quietHoursWebhooks,
+    initialValue: existing.quietHoursWebhooks,
   });
   return { spec, webhooks };
 }
@@ -209,12 +224,17 @@ async function collectOneWebhook(
   return { target, allowHttp: resolved.allowHttp };
 }
 
-/** Loop the webhook builder until the user declines to add another. */
+/**
+ * Loop the webhook builder until the user declines to add another. Seeded with
+ * the user's existing targets (add-only) so re-running init never drops the
+ * webhooks — and their auth headers — they already configured.
+ */
 async function collectWebhooks(
   io: InitIo,
+  existing: HollrConfig,
 ): Promise<{ targets: WebhookTarget[]; allowHttp: boolean }> {
-  const targets: WebhookTarget[] = [];
-  let allowHttp = false;
+  const targets: WebhookTarget[] = existing.webhooks.map((target) => structuredClone(target));
+  let allowHttp = existing.allowHttp;
   let add = await io.confirm({ message: "Add a webhook?", initialValue: false });
   while (add) {
     const built = await collectOneWebhook(io);
@@ -229,20 +249,23 @@ async function collectWebhooks(
 
 /**
  * Drive every sink prompt and fold the answers into a complete config, starting
- * from {@link DEFAULTS}. Pure: the only effects are the injected io calls.
+ * from the user's `existing` config so a re-run preserves everything it does not
+ * re-ask (voice rate, readaloud, notify.desktop) and seeds every prompt from the
+ * current value. Pure: the only effects are the injected io calls.
  */
 export async function collectSinkConfig(
   io: InitIo,
   enumerate: EnumerateVoices,
+  existing: HollrConfig,
 ): Promise<HollrConfig> {
-  const config = structuredClone(DEFAULTS);
-  config.events = await collectModes(io);
-  config.voice = await collectVoice(io, enumerate);
-  config.notify = { ...config.notify, sound: await collectSound(io) };
-  const quiet = await collectQuietHours(io);
+  const config = structuredClone(existing);
+  config.events = await collectModes(io, existing);
+  config.voice = await collectVoice(io, enumerate, existing);
+  config.notify = { ...config.notify, sound: await collectSound(io, existing) };
+  const quiet = await collectQuietHours(io, existing);
   config.quietHours = quiet.spec;
   config.quietHoursWebhooks = quiet.webhooks;
-  const webhooks = await collectWebhooks(io);
+  const webhooks = await collectWebhooks(io, existing);
   config.webhooks = webhooks.targets;
   config.allowHttp = webhooks.allowHttp;
   return config;

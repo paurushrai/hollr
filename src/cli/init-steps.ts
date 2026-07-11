@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { listWiredKeys } from "../adapters/diffwire.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
 import type { HollrConfig } from "../core/config.ts";
-import { DEFAULTS, hollrHome } from "../core/config.ts";
+import { DEFAULTS, hollrHome, isConfigured, loadConfig } from "../core/config.ts";
 import { allRequiredOk, checkAll, type Check } from "../core/doctor.ts";
 import type { Platform } from "../platform/index.ts";
 import { hardenConfig } from "../sinks/webhook.ts";
@@ -262,7 +262,11 @@ async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
   return io.confirm({ message: "Preview it now with `hollr test`?", initialValue: true });
 }
 
-/** Non-interactive setup (`--yes`): wire every detected agent, keep defaults. */
+/**
+ * Non-interactive setup (`--yes`): wire every detected agent. On a fresh install
+ * (no config file) write DEFAULTS; on a re-run preserve the existing config so a
+ * `--yes` never silently destroys configured sinks, webhooks, or secrets.
+ */
 async function runInitYes(deps: InitDeps): Promise<InitResult> {
   if (deps.detectV1()) {
     deps.migrate();
@@ -275,7 +279,9 @@ async function runInitYes(deps: InitDeps): Promise<InitResult> {
       await adapter.wire(adapterDeps(deps));
     }
   }
-  const configPath = writeGlobalConfig(structuredClone(DEFAULTS));
+  const cwd = process.cwd();
+  const config = isConfigured(cwd) ? loadConfig(cwd) : structuredClone(DEFAULTS);
+  const configPath = writeGlobalConfig(config);
   return { runTest: false, configPath };
 }
 
@@ -295,7 +301,11 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
     return { runTest: false, configPath: null };
   }
   await stepAgents(deps);
-  const config = await collectSinkConfig(deps.io, deps.enumerateVoices);
+  // Loaded after migrate/agent wiring so a just-migrated config seeds the
+  // prompts; loadConfig returns DEFAULTS when nothing exists, so this is the
+  // universal base and never destroys the user's current sinks.
+  const existing = loadConfig(process.cwd());
+  const config = await collectSinkConfig(deps.io, deps.enumerateVoices, existing);
   const configPath = writeGlobalConfig(config);
   const runTest = await stepSummary(deps.io, config);
   return { runTest, configPath };

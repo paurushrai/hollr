@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
 import type { HollrConfig } from "../../src/core/config.ts";
+import { DEFAULTS } from "../../src/core/config.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { InitChoice, InitDeps, InitIo } from "../../src/cli/init-steps.ts";
 import { runInit } from "../../src/cli/init-steps.ts";
@@ -179,6 +180,33 @@ function writeLedger(keys: string[]): void {
   writeFileSync(join(hollrHomeDir, "wired.json"), JSON.stringify(entries));
 }
 
+/** Pre-write a global config so a run exercises the "re-run" (existing) path. */
+function writeExistingConfig(config: HollrConfig): void {
+  mkdirSync(hollrHomeDir, { recursive: true });
+  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(config));
+}
+
+/** A config with a webhook (auth header) + custom voice + quiet hours to preserve. */
+function configuredConfig(): HollrConfig {
+  return {
+    ...structuredClone(DEFAULTS),
+    events: { done: { mode: "silent" }, blocked: { mode: "announce" }, error: { mode: "notify" } },
+    voice: { name: "Samantha", rateWpm: 210 },
+    quietHours: "22:00-08:00",
+    quietHoursWebhooks: "suppress",
+    webhooks: [
+      {
+        name: "prod",
+        provider: "generic",
+        url: "https://hooks.example",
+        events: ["done", "error"],
+        headers: { Authorization: "Bearer secret" },
+      },
+    ],
+    allowHttp: false,
+  };
+}
+
 /** Queue answers for the default sink flow (all defaults, no webhooks). */
 function scriptDefaultSinks(io: ScriptIo): void {
   io.selectQueue.push("announce", "announce", "notify"); // done/blocked/error modes
@@ -324,7 +352,48 @@ describe("runInit", () => {
     expect(wireOn).toHaveBeenCalledTimes(1);
     expect(wireOff).not.toHaveBeenCalled();
     expect(result.runTest).toBe(false);
-    expect(readWrittenConfig().version).toBe(2);
+    const config = readWrittenConfig();
+    expect(config.version).toBe(2);
+    expect(config.webhooks).toEqual([]);
+    expect(config.voice.name).toBeNull();
+  });
+
+  it("should_preserve_existing_sinks_on_yes_when_a_config_already_exists", async () => {
+    writeExistingConfig(configuredConfig());
+    const adapter = makeAdapter({ id: "a1", installed: true }, { wire: vi.fn(), unwire: vi.fn() });
+    const io = new ScriptIo(); // never consulted with --yes
+
+    await runInit(baseDeps(io, [adapter]), { yes: true });
+
+    const config = readWrittenConfig();
+    expect(config.webhooks).toHaveLength(1);
+    expect(config.webhooks[0]?.url).toBe("https://hooks.example");
+    expect(config.webhooks[0]?.headers).toEqual({ Authorization: "Bearer secret" });
+    expect(config.voice).toEqual({ name: "Samantha", rateWpm: 210 });
+    expect(config.quietHours).toBe("22:00-08:00");
+    expect(config.quietHoursWebhooks).toBe("suppress");
+  });
+
+  it("should_preserve_existing_webhooks_and_unprompted_settings_on_interactive_re_run", async () => {
+    writeExistingConfig({ ...configuredConfig(), voice: { name: null, rateWpm: 240 } });
+    const adapter = makeAdapter({ id: "a1", installed: false }, { wire: vi.fn(), unwire: vi.fn() });
+    const io = new ScriptIo();
+    io.multiselectQueue.push([]); // wire no agents
+    io.selectQueue.push("silent", "announce", "notify"); // accept existing modes
+    io.confirmQueue.push(false); // choose installed voices? no -> OS default
+    io.textQueue.push(""); // sound -> none
+    io.textQueue.push(""); // quiet hours -> none
+    io.confirmQueue.push(false); // add a webhook? no (existing seeded)
+    io.confirmQueue.push(false); // preview? no
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    const config = readWrittenConfig();
+    expect(config.webhooks).toHaveLength(1);
+    expect(config.webhooks[0]?.headers).toEqual({ Authorization: "Bearer secret" });
+    expect(config.events.done.mode).toBe("silent");
+    // rateWpm is never prompted: proves the base is the existing config, not DEFAULTS.
+    expect(config.voice.rateWpm).toBe(240);
   });
 });
 
@@ -345,7 +414,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add headers? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => []);
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
 
     expect(config.allowHttp).toBe(false);
     expect(config.webhooks).toHaveLength(1);
@@ -363,7 +432,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.selectQueue.push("suppress"); // quiet-hours webhook policy
     io.confirmQueue.push(false); // add webhook? no
 
-    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"]);
+    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"], structuredClone(DEFAULTS));
 
     expect(config.events.done.mode).toBe("readaloud");
     expect(config.voice.name).toBe("Samantha");
@@ -381,7 +450,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.textQueue.push(""); // quiet
     io.confirmQueue.push(false); // webhook
 
-    const config = await collectSinkConfig(io, () => []);
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
 
     expect(config.voice.name).toBeNull();
     expect(io.notesText()).toContain("OS default");
@@ -404,7 +473,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add another header? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => []);
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
 
     expect(config.webhooks[0]?.headers).toEqual({ token: "abc123" });
     expect(io.notesText().toLowerCase()).toContain("pushover");
@@ -425,7 +494,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // headers? no
     io.confirmQueue.push(false); // another? no
 
-    const config = await collectSinkConfig(io, () => []);
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
 
     expect(config.allowHttp).toBe(true);
     expect(config.webhooks[0]?.url).toBe("http://localhost:8080");
