@@ -59,3 +59,15 @@ def test_spawn_failure_is_swallowed():
     with patch.object(subprocess, "Popen", side_effect=OSError("no binary")):
         speech.speak("hi")   # must not raise
         speech.notify("t", "b")
+
+
+def test_speak_tolerates_non_numeric_rate():
+    with patch.object(subprocess, "Popen") as mock_popen:
+        speech.speak("hi", rate_wpm="fast")   # must not raise
+    argv = _popen_argv(mock_popen)
+    assert argv[4] == str(speech.DEFAULT_RATE_WPM)
+
+    with patch.object(subprocess, "Popen") as mock_popen:
+        speech.speak("hi", rate_wpm=None)   # must not raise
+    argv = _popen_argv(mock_popen)
+    assert argv[4] == str(speech.DEFAULT_RATE_WPM)

@@ -9,6 +9,7 @@ import subprocess
 MAX_SPEECH_CHARS = 2000
 MAX_NOTIFY_BODY = 200
 MAX_NOTIFY_TITLE = 60
+DEFAULT_RATE_WPM = 190
 
 
 def _spawn(argv: list[str]) -> None:
@@ -23,11 +24,18 @@ def _spawn(argv: list[str]) -> None:
         pass  # missing binary / spawn failure must never surface into the hook
 
 
-def speak(text: str, voice: str = "Samantha", rate_wpm: int = 190) -> None:
-    """Speak via macOS `say`, detached. `--` stops text becoming flags."""
+def speak(text: str, voice: str = "Samantha", rate_wpm: int = DEFAULT_RATE_WPM) -> None:
+    """Speak via macOS `say`, detached. `--` stops text becoming flags.
+    A non-numeric/None rate_wpm (e.g. hand-edited config) falls back to the
+    default rate instead of raising — a bad voice setting must never
+    suppress delivery."""
     if not text:
         return
-    _spawn(["say", "-v", str(voice), "-r", str(int(rate_wpm)), "--", text[:MAX_SPEECH_CHARS]])
+    try:
+        rate = int(rate_wpm)
+    except (TypeError, ValueError):
+        rate = DEFAULT_RATE_WPM
+    _spawn(["say", "-v", str(voice), "-r", str(rate), "--", text[:MAX_SPEECH_CHARS]])
 
 
 def _applescript_safe(text: str) -> str:

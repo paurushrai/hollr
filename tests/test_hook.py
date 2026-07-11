@@ -167,6 +167,16 @@ def test_type_wrong_config_never_raises(tmp_path, monkeypatch):
         assert hollr_hook.handle(_payload("payload_stop.json"), NOW) == 0  # must not raise
 
 
+def test_announce_with_bad_rate_still_notifies(tmp_path, monkeypatch):
+    _configured(tmp_path, monkeypatch,
+                {"voice": {"engine": "system", "name": "Samantha", "rate_wpm": "fast"}})
+    with patch.object(hollr_hook.speech, "speak") as speak, \
+         patch.object(hollr_hook.speech, "notify") as notify:
+        hollr_hook.handle(_payload("payload_stop.json"), NOW)
+    speak.assert_called_once()
+    notify.assert_called_once()
+
+
 def test_main_reads_stdin_and_never_raises_on_garbage(monkeypatch):
     monkeypatch.setattr(sys, "stdin", io.StringIO("{not json"))
     hollr_hook.main()   # must not raise, must not exit
