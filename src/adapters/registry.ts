@@ -5,6 +5,7 @@
  * per adapter task.
  */
 
+import { amp } from "./amp.ts";
 import { antigravity } from "./antigravity.ts";
 import { claudeCode } from "./claude-code.ts";
 import { codex } from "./codex.ts";
@@ -17,6 +18,7 @@ import type { Adapter } from "./types.ts";
 /** Every known adapter, in display order. Grows one entry per adapter task. */
 export const adapters: Adapter[] = [
   claudeCode,
+  amp,
   antigravity,
   codex,
   copilot,
