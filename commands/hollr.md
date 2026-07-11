@@ -94,9 +94,16 @@ when available). Show current values as defaults if config already exists.
    ```
 6. **Read-aloud limits** (only if they chose read-aloud): cap length
    (default 1200 chars) and strip code blocks (default yes).
-7. **Quiet hours:** none (default) or a range like `22:00-08:00` — voice is
-   suppressed in that window, notifications still show.
-8. **Scope:** write to global config (default) or this project's override.
+7. **Play an alert sound before the announcement?** default **None** (no
+   sound). Offer common macOS system tones: `Glass`, `Ping`, `Funk`,
+   `Submarine`, `Hero`. The sound always plays fully FIRST, then the voice
+   speaks — never simultaneously — which helps the cue cut through when
+   macOS Dictation or another app ducks (lowers) speech volume. Write the
+   chosen name to `notify.sound`, or `null` for none.
+8. **Quiet hours:** none (default) or a range like `22:00-08:00` — voice
+   (and any alert sound) is suppressed in that window, notifications still
+   show.
+9. **Scope:** write to global config (default) or this project's override.
 
 Then write the answers as JSON matching this exact schema (fill defaults
 for anything not asked):
@@ -109,13 +116,15 @@ for anything not asked):
     "needs_input": { "mode": "announce" }
   },
   "voice": { "engine": "system", "name": null, "rate_wpm": 190 },
-  "notify": { "desktop": true },
+  "notify": { "desktop": true, "sound": null },
   "readaloud": { "max_chars": 1200, "strip_code": true },
   "quiet_hours": null
 }
 ```
 `voice.name: null` = use the OS's default voice (recommended); set it to an
 installed voice's name only when the user opts into a specific one.
+`notify.sound: null` = no alert tone (default); set to a macOS system sound
+name (e.g. `"Glass"`) to play that tone first, then the voice.
 
 Valid modes — done: `announce` | `readaloud` | `notify` | `silent`;
 needs_input: `announce` | `notify` | `silent`.

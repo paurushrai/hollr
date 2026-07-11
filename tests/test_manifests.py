@@ -11,7 +11,7 @@ def _load(rel: str) -> dict:
 def test_plugin_manifest_has_required_fields():
     manifest = _load(".claude-plugin/plugin.json")
     assert manifest["name"] == "hollr"
-    assert manifest["version"] == "0.1.1"
+    assert manifest["version"] == "0.1.2"
     assert manifest["description"]
     assert manifest["author"]["name"] == "Paurush Rai"
 
