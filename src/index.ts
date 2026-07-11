@@ -10,6 +10,7 @@
  */
 
 import { spawn, type StdioOptions } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { adapters } from "./adapters/registry.ts";
@@ -250,12 +251,37 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-function isExecutedDirectly(): boolean {
-  const entry = process.argv[1];
+/**
+ * True when `entry` (process.argv[1]) refers to this module. A global/npm
+ * install exposes the bin as a SYMLINK, so `entry` is the symlink path while
+ * `modulePath` is the real file — a raw equality check fails and the CLI would
+ * silently no-op. Resolve the symlink via `resolve` (realpathSync) and compare.
+ * `resolve` is injected so the symlink and error paths are unit-testable.
+ */
+export function isEntryModule(
+  entry: string | undefined,
+  modulePath: string,
+  resolve: (path: string) => string,
+): boolean {
   if (entry === undefined) {
     return false;
   }
-  return entry === fileURLToPath(import.meta.url);
+  if (entry === modulePath) {
+    return true;
+  }
+  try {
+    return resolve(entry) === modulePath;
+  } catch {
+    return false;
+  }
+}
+
+function isExecutedDirectly(): boolean {
+  return isEntryModule(
+    process.argv[1],
+    fileURLToPath(import.meta.url),
+    realpathSync,
+  );
 }
 
 if (isExecutedDirectly()) {
