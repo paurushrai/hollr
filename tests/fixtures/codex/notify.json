@@ -1,0 +1,8 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "thread_01ABC",
+  "turn-id": "12345",
+  "cwd": "/Users/me/dev/my-app",
+  "input-messages": ["Rename `foo` to `bar` and update the callsites."],
+  "last-assistant-message": "Rename complete and verified `cargo build` succeeds."
+}
