@@ -7,3 +7,4 @@ coverage/
 # Local-only working docs and planning scratch — not published
 docs/
 .superpowers/
+/graphify-out
