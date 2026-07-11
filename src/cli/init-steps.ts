@@ -196,7 +196,30 @@ async function stepDoctor(deps: InitDeps): Promise<boolean> {
   return deps.io.confirm({ message: "Continue setup anyway?", initialValue: false });
 }
 
-/** Apply a wire, show the diff + warnings, and revert if the user rejects it. */
+/** One plain-language line: which alerts/commands an agent was wired for. */
+function wireSummary(adapter: Adapter): string {
+  const caps = adapter.capabilities;
+  const parts: string[] = [];
+  const alerts: string[] = [];
+  if (caps.done) {
+    alerts.push("done");
+  }
+  if (caps.blocked) {
+    alerts.push("needs-input");
+  }
+  if (alerts.length > 0) {
+    parts.push(`${alerts.join(" + ")} alerts`);
+  }
+  if (caps.readAloud) {
+    parts.push("read-aloud");
+  }
+  if (caps.slashCommand) {
+    parts.push("/hollr command");
+  }
+  return `${adapter.title}: ${parts.join(", ")}`;
+}
+
+/** Apply a wire, show a plain-language summary (raw diff only on request), and revert if the user rejects it. */
 async function wireAgent(deps: InitDeps, adapter: Adapter): Promise<void> {
   const result = await adapter.wire(adapterDeps(deps));
   for (const warning of result.warnings) {
@@ -206,7 +229,17 @@ async function wireAgent(deps: InitDeps, adapter: Adapter): Promise<void> {
     deps.io.note(`${adapter.title} is already configured.`);
     return;
   }
-  deps.io.note(result.diff, `${adapter.title} — changes applied`);
+  deps.io.note(
+    `${wireSummary(adapter)}\nYou can undo this anytime with \`hollr off\`.`,
+    `${adapter.title} — set up`,
+  );
+  const seeDiff = await deps.io.confirm({
+    message: "Show exactly what changed?",
+    initialValue: false,
+  });
+  if (seeDiff) {
+    deps.io.note(result.diff, `${adapter.title} — changes applied`);
+  }
   const keep = await deps.io.confirm({
     message: `Keep these changes to ${adapter.title}?`,
     initialValue: true,

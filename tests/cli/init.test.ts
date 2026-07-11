@@ -119,6 +119,7 @@ interface FakeAdapterOptions {
   installed: boolean;
   degraded?: string;
   changed?: boolean;
+  diff?: string;
 }
 
 function makeAdapter(
@@ -131,7 +132,7 @@ function makeAdapter(
   }
   const wireResult: WireResult = {
     changed: opts.changed ?? true,
-    diff: `+ hook for ${opts.id}`,
+    diff: opts.diff ?? `+ hook for ${opts.id}`,
     warnings: [],
   };
   return {
@@ -229,6 +230,7 @@ describe("runInit", () => {
     const adapter = makeAdapter({ id: "a1", installed: true }, { wire, unwire });
     const io = new ScriptIo();
     io.multiselectQueue.push(["a1"]); // select a1
+    io.confirmQueue.push(false); // show exactly what changed? no
     io.confirmQueue.push(true); // keep wire changes
     scriptDefaultSinks(io);
     io.confirmQueue.push(true); // preview with hollr test
@@ -283,6 +285,7 @@ describe("runInit", () => {
     const adapter = makeAdapter({ id: "a1", installed: true }, { wire, unwire });
     const io = new ScriptIo();
     io.multiselectQueue.push(["a1"]);
+    io.confirmQueue.push(false); // show exactly what changed? no
     io.confirmQueue.push(false); // do NOT keep the changes -> revert
     scriptDefaultSinks(io);
     io.confirmQueue.push(false);
@@ -292,6 +295,42 @@ describe("runInit", () => {
     expect(wire).toHaveBeenCalledTimes(1);
     expect(unwire).toHaveBeenCalledTimes(1);
     expect(io.notesText()).toContain("Reverted");
+  });
+
+  it("shows a human wiring summary and hides raw JSON by default", async () => {
+    const adapter = makeAdapter(
+      { id: "a1", installed: true, diff: '{"hooks": {"Stop": ["say done"]}}' },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["a1"]); // select a1
+    io.confirmQueue.push(false); // show exactly what changed? no
+    io.confirmQueue.push(true); // keep wire changes
+    scriptDefaultSinks(io);
+    io.confirmQueue.push(false); // preview? no
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    const noted = io.notesText();
+    expect(noted).toContain("A1:"); // human summary
+    expect(noted).not.toContain('"hooks"'); // no raw JSON
+  });
+
+  it("reveals the full diff when the user asks", async () => {
+    const adapter = makeAdapter(
+      { id: "a1", installed: true, diff: '{"hooks": {"Stop": ["say done"]}}' },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["a1"]); // select a1
+    io.confirmQueue.push(true); // show exactly what changed? yes
+    io.confirmQueue.push(true); // keep wire changes
+    scriptDefaultSinks(io);
+    io.confirmQueue.push(false); // preview? no
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    expect(io.notesText()).toContain('"hooks"'); // raw diff on demand
   });
 
   it("should_import_v1_config_when_detected_and_confirmed", async () => {
