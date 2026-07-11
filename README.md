@@ -23,14 +23,14 @@ and/or pings a webhook on your phone.
 Requires **Node ≥ 20**.
 
 ```bash
-npm i -g hollr
+npm i -g hollr-cli
 hollr init          # interactive setup wizard: pick agents, sounds, webhooks
 ```
 
 Or run it without a global install:
 
 ```bash
-npx hollr init
+npx hollr-cli init
 ```
 
 `hollr init` detects which agents you have, shows you the exact config diff
