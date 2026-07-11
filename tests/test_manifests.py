@@ -11,7 +11,7 @@ def _load(rel: str) -> dict:
 def test_plugin_manifest_has_required_fields():
     manifest = _load(".claude-plugin/plugin.json")
     assert manifest["name"] == "hollr"
-    assert manifest["version"] == "0.1.4"
+    assert manifest["version"] == "0.1.5"
     assert manifest["description"]
     assert manifest["author"]["name"] == "Paurush Rai"
 
@@ -23,6 +23,13 @@ def test_hooks_json_wires_stop_and_notification():
         command = entries[0]["hooks"][0]["command"]
         assert "${CLAUDE_PLUGIN_ROOT}/hooks/hollr_hook.py" in command
         assert command.startswith("python3 ")
+
+
+def test_hooks_json_wires_session_start_to_preflight():
+    hooks = _load("hooks/hooks.json")["hooks"]
+    command = hooks["SessionStart"][0]["hooks"][0]["command"]
+    assert "${CLAUDE_PLUGIN_ROOT}/hooks/preflight.py" in command
+    assert command.startswith("python3 ")
 
 
 def test_marketplace_lists_hollr():

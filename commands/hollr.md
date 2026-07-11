@@ -76,6 +76,11 @@ Read global config + project override + mute flag and report concisely:
 
 ## `doctor` — check prerequisites
 
+hollr also auto-checks prerequisites once at session start after install and
+surfaces a message if anything required is missing — no command needed —
+re-checking each startup until fixed, then it stays silent for good. Use
+`/hollr doctor` any time for the manual, detailed version:
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/bin/hollr-doctor
 ```

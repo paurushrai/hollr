@@ -24,7 +24,10 @@ Then in any session:
 
 ### Requirements / preflight
 
-Run `/hollr doctor` (or `bin/hollr-doctor`) any time to check:
+hollr also auto-checks prerequisites at session start right after install and
+shows a message if anything's missing — no command needed — until it's fixed,
+then it goes silent for good. Run `/hollr doctor` (or `bin/hollr-doctor`) any
+time for the manual, detailed version:
 
 - **macOS** — required; hollr v1 voice + notifications are macOS-only
 - **Python 3** — required; ships with Xcode Command Line Tools
