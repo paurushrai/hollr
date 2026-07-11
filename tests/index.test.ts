@@ -1,12 +1,16 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isMuted } from "../src/core/config.ts";
 import { run } from "../src/index.ts";
 
-const BANNER = "hollr 0.2.0";
+const packageJson = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+) as { version: string };
+const BANNER = `hollr ${packageJson.version}`;
 
 let tmpRoot: string;
 let hollrHomeDir: string;
