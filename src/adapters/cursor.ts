@@ -1,22 +1,22 @@
 /**
  * The cursor adapter — wires the Cursor Agent (`cursor-agent`) CLI to hollr via
  * Cursor Hooks, which Cursor loads from `~/.cursor/hooks.json` and shares across
- * the IDE and the CLI. It maps the `stop` hook to a `done` announcement and the
- * `beforeShellExecution` hook to an (advisory) `blocked` announcement.
+ * the IDE and the CLI. It maps the `stop` hook to a `done` announcement.
+ *
+ * Cursor is DONE-ONLY by default. Cursor has NO dedicated needs-input event, and
+ * its closest analog (`beforeShellExecution`) fires before EVERY shell command —
+ * not when the agent genuinely waits on the human — so wiring it to `blocked`
+ * spams false "needs your input" alerts. It is therefore not wired. Read-aloud
+ * and blocked come via the wrapper stream mode (a separate task), not here.
  *
  * VERIFIED against Cursor's Hooks docs (cursor.com/docs/hooks, Jul 2026):
  *   - config: `~/.cursor/hooks.json`, shape `{ "version": 1, "hooks": { … } }`;
  *   - entries: arrays of `{ "type": "command", "command": "…" }`;
  *   - payload delivered over STDIN as JSON;
- *   - `stop` payload carries `workspace_roots` (no `cwd`); `beforeShellExecution`
- *     carries both `cwd` and `workspace_roots` (`cwd` may be empty).
- * Cursor has NO dedicated needs-input event, so `beforeShellExecution` is the
- * closest analog to `blocked` — but it fires before EVERY shell command, so the
- * mapping is approximate/advisory, not a true "agent is waiting for you" signal.
+ *   - `stop` payload carries `workspace_roots` (no `cwd`).
  *
  * Cursor's transcript store is an undocumented SQLite database, so
- * {@link readLastResponse} never parses it and always yields `null`; read-aloud
- * for Cursor is delivered by the wrapper stream mode (a separate task), not here.
+ * {@link readLastResponse} never parses it and always yields `null`.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
  * MUST NOT throw: every read degrades defensively. `wire`/`unwire` go through
@@ -43,21 +43,9 @@ const HOOKS_FILE = "hooks.json";
 /** Cursor's hooks schema version; VERIFIED as `1` in the current docs. */
 const HOOKS_VERSION = 1;
 const HOOK_STOP = "stop";
-const HOOK_BEFORE_SHELL = "beforeShellExecution";
 const HOOK_TYPE_COMMAND = "command";
 
 const STOP_COMMAND = "hollr emit --agent cursor --event done --payload-stdin";
-const BLOCKED_COMMAND =
-  "hollr emit --agent cursor --event blocked --payload-stdin";
-
-/**
- * Why the `blocked` mapping is warned about at wire time: Cursor exposes no
- * needs-input event, so `beforeShellExecution` (which fires before every shell
- * command) is only an approximate stand-in.
- */
-const ADVISORY_WARNING =
-  "cursor 'blocked' is approximate/advisory: Cursor has no needs-input event, " +
-  "so hollr wires beforeShellExecution, which fires before every shell command";
 
 type JsonObject = Record<string, unknown>;
 
@@ -111,9 +99,9 @@ function appendHook(existing: unknown, command: string): unknown[] {
 }
 
 /**
- * Idempotent mutation that adds the `stop` and `beforeShellExecution` command
- * hooks, ensuring the required `version` field and preserving every unrelated
- * hook event and any pre-existing entries on the wired events.
+ * Idempotent mutation that adds the `stop` command hook, ensuring the required
+ * `version` field and preserving every unrelated hook event and any pre-existing
+ * entries on the `stop` event.
  */
 function addHooks(json: JsonObject): JsonObject {
   const hooks = isRecord(json.hooks) ? json.hooks : {};
@@ -124,7 +112,6 @@ function addHooks(json: JsonObject): JsonObject {
     hooks: {
       ...hooks,
       [HOOK_STOP]: appendHook(hooks[HOOK_STOP], STOP_COMMAND),
-      [HOOK_BEFORE_SHELL]: appendHook(hooks[HOOK_BEFORE_SHELL], BLOCKED_COMMAND),
     },
   };
 }
@@ -135,8 +122,8 @@ export const cursor: Adapter = {
   id: ID,
   title: TITLE,
   tagline:
-    "Cursor Agent (cursor-agent) — done via stop hook; blocked is approximate/advisory",
-  capabilities: { done: true, blocked: true, readAloud: false, slashCommand: false },
+    "Cursor Agent (cursor-agent) — done via stop hook (read-aloud/blocked come via the wrapper)",
+  capabilities: { done: true, blocked: false, readAloud: false, slashCommand: false },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =
@@ -153,7 +140,7 @@ export const cursor: Adapter = {
     const result: WireResult = {
       changed: op.changed,
       diff: op.diff,
-      warnings: [ADVISORY_WARNING],
+      warnings: [],
     };
     op.apply();
     return Promise.resolve(result);

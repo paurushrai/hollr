@@ -23,8 +23,6 @@ const BEFORESHELL_PAYLOAD = JSON.parse(
 ) as Record<string, unknown>;
 
 const STOP_COMMAND = "hollr emit --agent cursor --event done --payload-stdin";
-const BLOCKED_COMMAND =
-  "hollr emit --agent cursor --event blocked --payload-stdin";
 const LEDGER_KEY = "cursor";
 
 let tmpRoot: string;
@@ -83,17 +81,17 @@ afterEach(() => {
 });
 
 describe("cursor.capabilities & tagline", () => {
-  it("should_declare_done_and_advisory_blocked_no_readaloud", () => {
+  it("should_declare_done_only_no_blocked_no_readaloud", () => {
     expect(cursor.capabilities).toEqual({
       done: true,
-      blocked: true,
+      blocked: false,
       readAloud: false,
       slashCommand: false,
     });
   });
 
-  it("should_note_blocked_is_approximate_advisory_in_the_tagline", () => {
-    expect(cursor.tagline.toLowerCase()).toMatch(/approximate|advisory/);
+  it("should_describe_done_via_stop_hook_in_the_tagline", () => {
+    expect(cursor.tagline.toLowerCase()).toMatch(/done/);
   });
 });
 
@@ -151,24 +149,17 @@ describe("cursor.readLastResponse", () => {
 });
 
 describe("cursor.wire", () => {
-  it("should_add_stop_and_beforeshell_hooks_to_a_fresh_file", async () => {
+  it("should_add_only_the_stop_hook_to_a_fresh_file", async () => {
     const result = await cursor.wire(deps());
     expect(result.changed).toBe(true);
     expect(result.diff).toContain(STOP_COMMAND);
-    expect(result.diff).toContain(BLOCKED_COMMAND);
     expect(readHooks().version).toBe(1);
     expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
-    expect(hookCommands("beforeShellExecution")).toEqual([BLOCKED_COMMAND]);
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    expect(hooks.beforeShellExecution).toBeUndefined();
   });
 
-  it("should_warn_that_blocked_is_advisory", async () => {
-    const result = await cursor.wire(deps());
-    expect(result.warnings.join(" ").toLowerCase()).toMatch(
-      /approximate|advisory/,
-    );
-  });
-
-  it("should_preserve_an_existing_unrelated_hook_entry", async () => {
+  it("should_preserve_an_existing_unrelated_hook_entry_without_wiring_blocked", async () => {
     writeHooks({
       version: 1,
       hooks: {
@@ -179,8 +170,7 @@ describe("cursor.wire", () => {
     });
     await cursor.wire(deps());
     const commands = hookCommands("beforeShellExecution");
-    expect(commands).toContain("./approve.sh");
-    expect(commands).toContain(BLOCKED_COMMAND);
+    expect(commands).toEqual(["./approve.sh"]);
     expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
   });
 
@@ -190,7 +180,8 @@ describe("cursor.wire", () => {
     expect(second.changed).toBe(false);
     expect(second.diff).toBe("");
     expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
-    expect(hookCommands("beforeShellExecution")).toEqual([BLOCKED_COMMAND]);
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    expect(hooks.beforeShellExecution).toBeUndefined();
   });
 });
 
