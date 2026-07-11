@@ -318,6 +318,33 @@ describe("delivery semantics", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("should_allow_http_when_the_target_opts_in_even_if_the_global_flag_is_false", async () => {
+    const { fn, calls } = recordingFetch();
+    await fireWebhooks(
+      makeEvent(),
+      [target({ name: "opted-in", url: "http://hook.example/x", allowHttp: true })],
+      { allowHttp: false, fetchFn: fn, logPath },
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("should_not_let_one_target_http_opt_in_bleed_into_a_sibling_http_target", async () => {
+    const { fn, calls } = recordingFetch();
+    await fireWebhooks(
+      makeEvent(),
+      [
+        target({ name: "opted-in", url: "http://a.example/x", allowHttp: true }),
+        target({ name: "not-opted", url: "http://b.example/x" }),
+      ],
+      { allowHttp: false, fetchFn: fn, logPath },
+    );
+    // Only the opted-in target is delivered; the sibling is skipped, not widened.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("http://a.example/x");
+    const log = readFileSync(logPath, "utf8");
+    expect(log).toContain("not-opted http-not-allowed");
+  });
+
   it("should_never_reject_even_when_delivery_fails", async () => {
     const { fn } = rejectingFetch();
     await expect(

@@ -47,6 +47,12 @@ interface LedgerEntry {
 const JSON_INDENT = 2;
 const TRAILING_NEWLINE = "\n";
 const LEDGER_FILE = "wired.json";
+/**
+ * The ledger stores each foreign config file's prior content verbatim so a wire
+ * is byte-reversible — and those files (e.g. `~/.claude/settings.json`) often
+ * hold tokens/credentials. Restrict it to the owner, like the global config.
+ */
+const LEDGER_MODE = 0o600;
 const DIFF_CONTEXT_LINES = 3;
 const REMOVED_MARK = "-";
 const ADDED_MARK = "+";
@@ -80,12 +86,16 @@ function readFileOrNull(path: string): string | null {
   }
 }
 
-/** Write `content` to `path` atomically (temp file then rename). */
-function writeFileAtomic(path: string, content: string): void {
+/**
+ * Write `content` to `path` atomically (temp file then rename). When `mode` is
+ * given, the temp file is created with it and the rename preserves it, so the
+ * final file lands with those permissions even if it already existed.
+ */
+function writeFileAtomic(path: string, content: string, mode?: number): void {
   const dir = dirname(path);
   mkdirSync(dir, { recursive: true });
   const temp = join(dir, `.${basename(path)}.${process.pid}.tmp`);
-  writeFileSync(temp, content, "utf8");
+  writeFileSync(temp, content, mode === undefined ? "utf8" : { encoding: "utf8", mode });
   renameSync(temp, path);
 }
 
@@ -132,6 +142,7 @@ function writeLedger(entries: LedgerEntry[]): void {
   writeFileAtomic(
     ledgerPath(),
     `${JSON.stringify(entries, null, JSON_INDENT)}${TRAILING_NEWLINE}`,
+    LEDGER_MODE,
   );
 }
 

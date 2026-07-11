@@ -227,7 +227,10 @@ async function deliverTarget(
   allowHttp: boolean,
   fetchFn: typeof fetch,
 ): Promise<string> {
-  if (!urlAllowed(target.url, allowHttp)) {
+  // Per-target opt-in wins; the global flag is only a fallback for legacy
+  // configs written before http was opt-in per target.
+  const httpAllowed = target.allowHttp ?? allowHttp;
+  if (!urlAllowed(target.url, httpAllowed)) {
     return logLine(ev, OUTCOME_SKIP, target.name, SKIP_REASON_HTTP);
   }
   const formatter = FORMATTERS[target.provider];

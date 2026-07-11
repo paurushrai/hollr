@@ -47,6 +47,11 @@ export interface WebhookTarget {
   url: string;
   events: EventName[];
   headers?: Record<string, string>;
+  /**
+   * Per-target opt-in to insecure `http:` delivery. Undefined = deny (falls back
+   * to the legacy root `allowHttp` for configs written before this was per-target).
+   */
+  allowHttp?: boolean;
 }
 
 export interface HollrConfig {
@@ -59,6 +64,10 @@ export interface HollrConfig {
   quietHours: string | null;
   quietHoursWebhooks: QuietHoursWebhooks;
   webhooks: WebhookTarget[];
+  /**
+   * Legacy global http opt-in, kept only as a fallback for a target that has no
+   * own `allowHttp`. New setups set the flag per target; this stays `false`.
+   */
   allowHttp: boolean;
 }
 

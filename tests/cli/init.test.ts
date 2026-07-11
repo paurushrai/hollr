@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -244,6 +244,25 @@ describe("runInit", () => {
     expect(config.events.done.mode).toBe("announce");
     expect(config.webhooks).toEqual([]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "should_create_the_global_config_owner_only_0600",
+    async () => {
+      const adapter = makeAdapter(
+        { id: "a1", installed: true },
+        { wire: vi.fn(), unwire: vi.fn() },
+      );
+      const io = new ScriptIo();
+      io.multiselectQueue.push([]); // wire nothing
+      scriptDefaultSinks(io);
+      io.confirmQueue.push(false); // no test
+
+      await runInit(baseDeps(io, [adapter]), { yes: false });
+
+      const mode = statSync(join(hollrHomeDir, "config.json")).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
 
   it("should_unwire_when_a_previously_wired_agent_is_deselected", async () => {
     writeLedger(["a1:cfg"]);
@@ -550,7 +569,7 @@ describe("collectSinkConfig webhook https validation", () => {
     expect(io.notesText().toLowerCase()).toContain("pushover");
   });
 
-  it("should_set_allowHttp_when_user_opts_into_an_http_url", async () => {
+  it("should_set_per_target_allowHttp_and_leave_root_flag_false_on_http_opt_in", async () => {
     const io = new ScriptIo();
     io.selectQueue.push("announce", "announce", "notify");
     io.confirmQueue.push(false); // voices
@@ -567,8 +586,41 @@ describe("collectSinkConfig webhook https validation", () => {
 
     const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
 
-    expect(config.allowHttp).toBe(true);
+    // Opt-in is scoped to the target, never widened to a config-wide flag.
     expect(config.webhooks[0]?.url).toBe("http://localhost:8080");
+    expect(config.webhooks[0]?.allowHttp).toBe(true);
+    expect(config.allowHttp).toBe(false);
+  });
+
+  it("should_not_let_one_http_opt_in_permit_a_second_http_target", async () => {
+    const io = new ScriptIo();
+    io.selectQueue.push("announce", "announce", "notify");
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push(""); // sound
+    io.textQueue.push(""); // quiet
+    io.confirmQueue.push(true); // add webhook #1
+    io.selectQueue.push("ntfy"); // provider
+    io.textQueue.push("opted-in"); // name
+    io.textQueue.push("http://a.example"); // url
+    io.confirmQueue.push(true); // allow insecure http? yes
+    io.multiselectQueue.push(["done"]); // events
+    io.confirmQueue.push(false); // headers? no
+    io.confirmQueue.push(true); // add webhook #2
+    io.selectQueue.push("ntfy"); // provider
+    io.textQueue.push("declined"); // name
+    io.textQueue.push("http://b.example"); // url
+    io.confirmQueue.push(false); // allow insecure http? NO
+    io.textQueue.push("https://b.example"); // re-prompt → give https
+    io.multiselectQueue.push(["done"]); // events
+    io.confirmQueue.push(false); // headers? no
+    io.confirmQueue.push(false); // another? no
+
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+
+    expect(config.webhooks[0]?.allowHttp).toBe(true);
+    // The declined second target never inherits the first's opt-in.
+    expect(config.webhooks[1]?.allowHttp).toBeUndefined();
+    expect(config.allowHttp).toBe(false);
   });
 });
 
