@@ -13,6 +13,7 @@ import { copilot } from "./copilot.ts";
 import { cursor } from "./cursor.ts";
 import { gemini } from "./gemini.ts";
 import { opencode } from "./opencode.ts";
+import { wrapper } from "./wrapper.ts";
 import type { Adapter } from "./types.ts";
 
 /** Every known adapter, in display order. Grows one entry per adapter task. */
@@ -25,6 +26,7 @@ export const adapters: Adapter[] = [
   cursor,
   gemini,
   opencode,
+  wrapper,
 ];
 
 /** Look up an adapter by its stable id, or `undefined` when unknown. */

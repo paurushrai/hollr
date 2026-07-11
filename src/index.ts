@@ -9,6 +9,7 @@
  * stderr and exits non-zero rather than masking a real failure as success.
  */
 
+import { spawn, type StdioOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { adapters } from "./adapters/registry.ts";
@@ -17,6 +18,8 @@ import { allRequiredOk, checkAll, type Check } from "./core/doctor.ts";
 import type { EmitDeps } from "./cli/emit.ts";
 import { MAX_STDIN_BYTES, runEmit } from "./cli/emit.ts";
 import { runMute } from "./cli/mute.ts";
+import type { StdioMode, WrapperChild, WrapperDeps } from "./cli/run.ts";
+import { runWrapper } from "./cli/run.ts";
 import type { TestDeps } from "./cli/test.ts";
 import { runTest } from "./cli/test.ts";
 import { runStatus } from "./cli/status.ts";
@@ -46,7 +49,7 @@ const EXIT_ERROR = 1;
 const EXIT_USAGE = 2;
 
 const USAGE =
-  "usage: hollr <emit|test|status|pause|resume|stop|mute|doctor> [options] " +
+  "usage: hollr <emit|run|test|status|pause|resume|stop|mute|doctor> [options] " +
   "(--version for version)";
 
 const MARK_OK = "✔";
@@ -92,6 +95,30 @@ function realSinks(): RealSinks {
 /** Real, production emit dependencies: the live sinks + a capped stdin reader. */
 function realEmitDeps(): EmitDeps {
   return { readStdin, ...realSinks() };
+}
+
+/**
+ * Spawn a non-detached child that owns the terminal. Plain mode inherits all
+ * stdio; stream mode pipes stdout so `hollr run` can tee + parse it. NEVER uses
+ * a shell — argv is passed as an array, so no injection or word-splitting.
+ */
+function realSpawn(command: string, args: string[], mode: StdioMode): WrapperChild {
+  const stdio: StdioOptions =
+    mode === "stream" ? ["inherit", "pipe", "inherit"] : "inherit";
+  return spawn(command, args, { stdio });
+}
+
+/** Real `hollr run` dependencies: the live spawn + sinks + stdout tee + clock. */
+function realWrapperDeps(): WrapperDeps {
+  return {
+    spawn: realSpawn,
+    out: (chunk) => {
+      process.stdout.write(chunk);
+    },
+    cwd: process.cwd(),
+    now: () => new Date(),
+    ...realSinks(),
+  };
 }
 
 /** Real, production `hollr test` dependencies: the live sinks + cwd + stdout. */
@@ -165,6 +192,9 @@ export async function run(argv: string[]): Promise<number> {
       return emitControl(getVersionString());
     case "emit":
       return runEmitSafe(rest);
+    case "run":
+      // Unlike emit's exit-0 hook guard, run must passthrough the child's code.
+      return runWrapper(rest, realWrapperDeps());
     case "test":
       return runTest(rest, realTestDeps(), new Date());
     case "status":
