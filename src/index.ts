@@ -25,6 +25,7 @@ import { runWrapper } from "./cli/run.ts";
 import type { TestDeps } from "./cli/test.ts";
 import { runTest } from "./cli/test.ts";
 import { runStatus } from "./cli/status.ts";
+import { runQuiet } from "./cli/quiet.ts";
 import type { HollrEvent } from "./core/events.ts";
 import type { WebhookTarget } from "./core/config.ts";
 import type { Platform } from "./platform/index.ts";
@@ -229,6 +230,8 @@ export async function run(argv: string[]): Promise<number> {
       return emitControl(resumeReading());
     case "stop":
       return emitControl(stopReading());
+    case "quiet":
+      return runQuiet(rest, new Date());
     case "on":
       return setProjectState(true, process.cwd());
     case "off":
