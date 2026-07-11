@@ -1,0 +1,241 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { cursor } from "../../src/adapters/cursor.ts";
+import { unwireFromLedger } from "../../src/adapters/diffwire.ts";
+import type { AdapterDeps } from "../../src/adapters/types.ts";
+
+const FIXTURES = join(__dirname, "..", "fixtures", "cursor");
+const STOP_PAYLOAD = JSON.parse(
+  readFileSync(join(FIXTURES, "stop.json"), "utf8"),
+) as Record<string, unknown>;
+const BEFORESHELL_PAYLOAD = JSON.parse(
+  readFileSync(join(FIXTURES, "beforeshell.json"), "utf8"),
+) as Record<string, unknown>;
+
+const STOP_COMMAND = "hollr emit --agent cursor --event done --payload-stdin";
+const BLOCKED_COMMAND =
+  "hollr emit --agent cursor --event blocked --payload-stdin";
+const LEDGER_KEY = "cursor";
+
+let tmpRoot: string;
+let home: string;
+let hollrHomeDir: string;
+let prevHollrHome: string | undefined;
+
+/** `which` fake that resolves nothing (cursor-agent not on PATH). */
+const whichNone = (): string | null => null;
+/** `which` fake resolving only `cursor-agent`. */
+const whichCursor = (bin: string): string | null =>
+  bin === "cursor-agent" ? "/Users/me/.local/bin/cursor-agent" : null;
+
+function deps(which: (bin: string) => string | null = whichNone): AdapterDeps {
+  return { home, which };
+}
+
+function hooksPath(): string {
+  return join(home, ".cursor", "hooks.json");
+}
+
+function writeHooks(json: unknown): void {
+  mkdirSync(join(home, ".cursor"), { recursive: true });
+  writeFileSync(hooksPath(), `${JSON.stringify(json, null, 2)}\n`, "utf8");
+}
+
+function readHooks(): Record<string, unknown> {
+  return JSON.parse(readFileSync(hooksPath(), "utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+function hookCommands(event: string): string[] {
+  const hooks = readHooks().hooks as Record<string, unknown>;
+  const list = hooks[event] as Array<{ command?: unknown }>;
+  return list.map((entry) => String(entry.command));
+}
+
+beforeEach(() => {
+  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-cursor-"));
+  home = join(tmpRoot, "home");
+  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  mkdirSync(home, { recursive: true });
+  prevHollrHome = process.env.HOLLR_HOME;
+  process.env.HOLLR_HOME = hollrHomeDir;
+});
+
+afterEach(() => {
+  if (prevHollrHome === undefined) {
+    delete process.env.HOLLR_HOME;
+  } else {
+    process.env.HOLLR_HOME = prevHollrHome;
+  }
+  rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe("cursor.capabilities & tagline", () => {
+  it("should_declare_done_and_advisory_blocked_no_readaloud", () => {
+    expect(cursor.capabilities).toEqual({
+      done: true,
+      blocked: true,
+      readAloud: false,
+      slashCommand: false,
+    });
+  });
+
+  it("should_note_blocked_is_approximate_advisory_in_the_tagline", () => {
+    expect(cursor.tagline.toLowerCase()).toMatch(/approximate|advisory/);
+  });
+});
+
+describe("cursor.normalize", () => {
+  it("should_map_stop_payload_to_a_done_event_using_workspace_roots", () => {
+    const event = cursor.normalize(STOP_PAYLOAD, "done");
+    expect(event).not.toBeNull();
+    expect(event?.agent).toBe("cursor");
+    expect(event?.agentTitle).toBe("Cursor");
+    expect(event?.event).toBe("done");
+    expect(event?.cwd).toBe("/Users/me/dev/my-app");
+    expect(event?.project).toBe("my app");
+    expect(event?.summary).toBe("");
+    expect(event?.lastResponse).toBeNull();
+    expect(event?.v).toBe(1);
+    expect(typeof event?.ts).toBe("string");
+  });
+
+  it("should_map_beforeshell_payload_to_a_blocked_event_using_cwd", () => {
+    const event = cursor.normalize(BEFORESHELL_PAYLOAD, "blocked");
+    expect(event?.event).toBe("blocked");
+    expect(event?.cwd).toBe("/Users/me/dev/my-app");
+    expect(event?.project).toBe("my app");
+  });
+
+  it("should_return_null_when_raw_is_not_an_object", () => {
+    expect(cursor.normalize("nope", "done")).toBeNull();
+    expect(cursor.normalize(null, "done")).toBeNull();
+    expect(cursor.normalize(42, "done")).toBeNull();
+    expect(cursor.normalize(["a"], "done")).toBeNull();
+  });
+
+  it("should_fall_back_to_workspace_roots_when_cwd_is_empty", () => {
+    const event = cursor.normalize(
+      { cwd: "", workspace_roots: ["/tmp/proj"] },
+      "blocked",
+    );
+    expect(event?.cwd).toBe("/tmp/proj");
+  });
+
+  it("should_leave_cwd_empty_when_neither_cwd_nor_workspace_roots_present", () => {
+    expect(cursor.normalize({ conversation_id: "x" }, "done")?.cwd).toBe("");
+    expect(cursor.normalize({ workspace_roots: [] }, "done")?.cwd).toBe("");
+    expect(cursor.normalize({ workspace_roots: [5] }, "done")?.cwd).toBe("");
+  });
+});
+
+describe("cursor.readLastResponse", () => {
+  it("should_always_resolve_null_no_readaloud_from_hooks", async () => {
+    expect(await cursor.readLastResponse(STOP_PAYLOAD)).toBeNull();
+    expect(await cursor.readLastResponse({})).toBeNull();
+    expect(await cursor.readLastResponse("nope")).toBeNull();
+    expect(await cursor.readLastResponse(null)).toBeNull();
+  });
+});
+
+describe("cursor.wire", () => {
+  it("should_add_stop_and_beforeshell_hooks_to_a_fresh_file", async () => {
+    const result = await cursor.wire(deps());
+    expect(result.changed).toBe(true);
+    expect(result.diff).toContain(STOP_COMMAND);
+    expect(result.diff).toContain(BLOCKED_COMMAND);
+    expect(readHooks().version).toBe(1);
+    expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
+    expect(hookCommands("beforeShellExecution")).toEqual([BLOCKED_COMMAND]);
+  });
+
+  it("should_warn_that_blocked_is_advisory", async () => {
+    const result = await cursor.wire(deps());
+    expect(result.warnings.join(" ").toLowerCase()).toMatch(
+      /approximate|advisory/,
+    );
+  });
+
+  it("should_preserve_an_existing_unrelated_hook_entry", async () => {
+    writeHooks({
+      version: 1,
+      hooks: {
+        beforeShellExecution: [
+          { type: "command", command: "./approve.sh", matcher: "curl" },
+        ],
+      },
+    });
+    await cursor.wire(deps());
+    const commands = hookCommands("beforeShellExecution");
+    expect(commands).toContain("./approve.sh");
+    expect(commands).toContain(BLOCKED_COMMAND);
+    expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
+  });
+
+  it("should_be_idempotent_on_a_second_wire", async () => {
+    await cursor.wire(deps());
+    const second = await cursor.wire(deps());
+    expect(second.changed).toBe(false);
+    expect(second.diff).toBe("");
+    expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
+    expect(hookCommands("beforeShellExecution")).toEqual([BLOCKED_COMMAND]);
+  });
+});
+
+describe("cursor.unwire", () => {
+  it("should_restore_the_prior_hooks_byte_identically", async () => {
+    writeHooks({
+      version: 1,
+      hooks: {
+        beforeShellExecution: [{ type: "command", command: "./approve.sh" }],
+      },
+    });
+    const original = readFileSync(hooksPath(), "utf8");
+    await cursor.wire(deps());
+    expect(readFileSync(hooksPath(), "utf8")).not.toBe(original);
+    await cursor.unwire(deps());
+    expect(readFileSync(hooksPath(), "utf8")).toBe(original);
+  });
+
+  it("should_delete_a_hooks_file_that_did_not_exist_before_wiring", async () => {
+    await cursor.wire(deps());
+    expect(existsSync(hooksPath())).toBe(true);
+    await cursor.unwire(deps());
+    expect(existsSync(hooksPath())).toBe(false);
+  });
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+  });
+});
+
+describe("cursor.detect", () => {
+  it("should_report_installed_when_cursor_agent_is_on_path", async () => {
+    const detection = await cursor.detect(deps(whichCursor));
+    expect(detection.installed).toBe(true);
+    expect(detection.configPath).toBe(hooksPath());
+  });
+
+  it("should_report_installed_when_the_dot_cursor_dir_exists", async () => {
+    mkdirSync(join(home, ".cursor"), { recursive: true });
+    const detection = await cursor.detect(deps(whichNone));
+    expect(detection.installed).toBe(true);
+  });
+
+  it("should_report_not_installed_on_a_bare_home", async () => {
+    const detection = await cursor.detect(deps(whichNone));
+    expect(detection.installed).toBe(false);
+  });
+});

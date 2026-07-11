@@ -9,6 +9,7 @@ import { antigravity } from "./antigravity.ts";
 import { claudeCode } from "./claude-code.ts";
 import { codex } from "./codex.ts";
 import { copilot } from "./copilot.ts";
+import { cursor } from "./cursor.ts";
 import { gemini } from "./gemini.ts";
 import type { Adapter } from "./types.ts";
 
@@ -18,6 +19,7 @@ export const adapters: Adapter[] = [
   antigravity,
   codex,
   copilot,
+  cursor,
   gemini,
 ];
 

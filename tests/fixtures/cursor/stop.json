@@ -1,0 +1,7 @@
+{
+  "conversation_id": "cdefee2d-2727-4b73-bf77-d9d830f31d2a",
+  "generation_id": "26b45fb6-bdea-439c-b2dc-5e97ee00ecea",
+  "status": "completed",
+  "hook_event_name": "stop",
+  "workspace_roots": ["/Users/me/dev/my-app"]
+}
