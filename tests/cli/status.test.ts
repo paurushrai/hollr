@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULTS, encodeCwd } from "../../src/core/config.ts";
 import type { Platform } from "../../src/platform/index.ts";
-import type { StatusIo } from "../../src/cli/status.ts";
+import type { StatusIo, StatusModel } from "../../src/cli/status.ts";
 import { formatStatus, runStatus } from "../../src/cli/status.ts";
 
 let tmpRoot: string;
@@ -164,6 +164,9 @@ describe("formatStatus (pure)", () => {
       cwd: "/tmp/demo-app",
       config: DEFAULTS,
       muted: false,
+      enabled: false,
+      activation: "all",
+      quiet: { active: false, remainingMinutes: null },
       canPauseResume: true,
       wiredKeys: [],
       webhookLog: [],
@@ -178,11 +181,59 @@ describe("formatStatus (pure)", () => {
       cwd: "/tmp/demo",
       config: DEFAULTS,
       muted: false,
+      enabled: false,
+      activation: "all",
+      quiet: { active: false, remainingMinutes: null },
       canPauseResume: true,
       wiredKeys: ["mystery-agent:file"],
       webhookLog: [],
       eventsLog: [],
     });
     expect(text).toContain("mystery-agent:file");
+  });
+});
+
+describe("status plain-language scope lines", () => {
+  const base: StatusModel = {
+    cwd: "/tmp/proj",
+    config: DEFAULTS,
+    muted: false,
+    enabled: false,
+    activation: "all",
+    quiet: { active: false, remainingMinutes: null },
+    canPauseResume: true,
+    wiredKeys: [],
+    webhookLog: [],
+    eventsLog: [],
+  };
+
+  it("shows on-in-every-project for activation all", () => {
+    expect(formatStatus(base)).toContain("on in every project");
+  });
+  it("shows on-only-where-turned-on for opt-in", () => {
+    expect(formatStatus({ ...base, activation: "opt-in" })).toContain(
+      "on only where you turn it on",
+    );
+  });
+  it("reports this project on when enabled", () => {
+    expect(formatStatus({ ...base, enabled: true })).toContain("on for this project");
+  });
+  it("reports off when muted", () => {
+    expect(formatStatus({ ...base, muted: true })).toContain("off for this project");
+  });
+  it("under opt-in with no override, prompts to enable here", () => {
+    expect(formatStatus({ ...base, activation: "opt-in" })).toContain(
+      "not turned on here — run 'hollr on'",
+    );
+  });
+  it("shows an indefinite quiet", () => {
+    expect(
+      formatStatus({ ...base, quiet: { active: true, remainingMinutes: null } }),
+    ).toContain("quiet until you run 'hollr quiet off'");
+  });
+  it("shows minutes remaining for a timed quiet", () => {
+    expect(
+      formatStatus({ ...base, quiet: { active: true, remainingMinutes: 24 } }),
+    ).toContain("quiet for 24 more minutes");
   });
 });

@@ -16,8 +16,15 @@ import { join } from "node:path";
 
 import { byId } from "../adapters/registry.ts";
 import { listWiredKeys } from "../adapters/diffwire.ts";
-import type { EventName, HollrConfig, WebhookTarget } from "../core/config.ts";
-import { hollrHome, isMuted, loadConfig } from "../core/config.ts";
+import type { Activation, EventName, HollrConfig, WebhookTarget } from "../core/config.ts";
+import {
+  hollrHome,
+  isMuted,
+  isProjectEnabled,
+  loadConfig,
+  quietActive,
+  quietUntilPath,
+} from "../core/config.ts";
 import { projectLabel } from "../core/events.ts";
 import type { Platform } from "../platform/index.ts";
 
@@ -28,6 +35,7 @@ const EXIT_OK = 0;
 const NONE = "none";
 const UNKNOWN_MODE = "unknown";
 const DEFAULT_VOICE = "system default";
+const MS_PER_MINUTE = 60_000;
 const EVENT_NAMES: readonly EventName[] = ["done", "blocked", "error"];
 
 /** The fully-resolved inputs `formatStatus` renders; nothing here touches disk. */
@@ -35,6 +43,9 @@ export interface StatusModel {
   cwd: string;
   config: HollrConfig;
   muted: boolean;
+  enabled: boolean;
+  activation: Activation;
+  quiet: { active: boolean; remainingMinutes: number | null };
   canPauseResume: boolean;
   wiredKeys: string[];
   webhookLog: string[];
@@ -106,9 +117,44 @@ function configSection(config: HollrConfig): string {
   ].join("\n");
 }
 
+/** Whether hollr applies globally or requires an explicit per-project opt-in. */
+function scopeLine(activation: Activation): string {
+  return activation === "opt-in"
+    ? "Notifications: on only where you turn it on"
+    : "Notifications: on in every project";
+}
+
+/** This project's effective on/off state, factoring in mute and opt-in scope. */
+function projectStateLine(model: StatusModel): string {
+  if (model.muted) {
+    return "This project: off for this project — run 'hollr on' to enable";
+  }
+  if (model.enabled) {
+    return "This project: on for this project";
+  }
+  if (model.activation === "opt-in") {
+    return "This project: not turned on here — run 'hollr on' to enable";
+  }
+  return "This project: on for this project";
+}
+
+/** Whether a temporary global quiet is active, and for how much longer. */
+function quietLine(quiet: StatusModel["quiet"]): string {
+  if (!quiet.active) {
+    return "Quiet: no";
+  }
+  if (quiet.remainingMinutes === null) {
+    return "Quiet: quiet until you run 'hollr quiet off'";
+  }
+  return `Quiet: quiet for ${quiet.remainingMinutes} more minutes`;
+}
+
 function projectSection(model: StatusModel): string {
   return [
     `Project: ${projectLabel(model.cwd)} (${model.cwd})`,
+    scopeLine(model.activation),
+    projectStateLine(model),
+    quietLine(model.quiet),
     `Muted: ${model.muted ? "yes" : "no"}`,
     `Pause/resume: ${model.canPauseResume ? "supported" : "unsupported"}`,
   ].join("\n");
@@ -140,13 +186,36 @@ function readLogTail(path: string): string[] {
   }
 }
 
+/** Remaining quiet in ms for a timed quiet; null for indefinite/inactive/elapsed. */
+function readQuietRemaining(now: Date): number | null {
+  try {
+    const raw = readFileSync(quietUntilPath(), "utf8").trim();
+    if (!/^-?\d+$/.test(raw)) {
+      return null;
+    }
+    const remaining = Number.parseInt(raw, 10) - now.getTime();
+    return remaining > 0 ? remaining : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Gather the status model from disk/platform and print the report. */
 export function runStatus(io: StatusIo): number {
   const home = hollrHome();
+  const config = loadConfig(io.cwd);
+  const now = new Date();
+  const quietMs = readQuietRemaining(now);
   const model: StatusModel = {
     cwd: io.cwd,
-    config: loadConfig(io.cwd),
+    config,
     muted: isMuted(io.cwd),
+    enabled: isProjectEnabled(io.cwd),
+    activation: config.activation,
+    quiet: {
+      active: quietActive(now),
+      remainingMinutes: quietMs === null ? null : Math.ceil(quietMs / MS_PER_MINUTE),
+    },
     canPauseResume: io.platform.canPauseResume,
     wiredKeys: listWiredKeys(),
     webhookLog: readLogTail(join(home, WEBHOOK_LOG)),
