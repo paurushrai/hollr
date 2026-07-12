@@ -20,7 +20,11 @@ jobs:
         id: release
         with:
           # Uses release-please-config.json + .release-please-manifest.json.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a PAT so release-please's PR triggers CI (the default
+          # GITHUB_TOKEN cannot, by design — GitHub blocks workflow recursion,
+          # so the required check never runs and merges need `--admin`). Falls
+          # back to GITHUB_TOKEN when the secret is absent (current behaviour).
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
   publish:
     name: publish to npm
