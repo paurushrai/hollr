@@ -93,8 +93,9 @@ markdown command instead of speaking it.
 
 - **Opt-in** — offered only when read-aloud is your `done` mode, only for agents
   you wire.
-- **Reversible** — it's a marked block; `hollr unwire` removes just that block
-  and leaves the rest of your file untouched.
+- **Reversible** — it's a marked block; re-running `hollr init` with read-aloud
+  off removes just that block and leaves the rest of your file untouched.
+  `hollr uninstall` reverses everything hollr wired.
 - **Best-effort** — it's a prompt nudge, not a guarantee; models may not always
   comply.
 - **Tidy** — temp files live under `~/.config/hollr/readaloud/` and are

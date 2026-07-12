@@ -358,7 +358,7 @@ async function stepInjectInstructions(
       continue;
     }
     deps.io.note(
-      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible via \`hollr unwire\`).`,
+      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible: re-run \`hollr init\` with read-aloud off, or \`hollr uninstall\`).`,
     );
     const seeDiff = await deps.io.confirm({
       message: "Show exactly what changed?",

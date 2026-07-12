@@ -275,7 +275,7 @@ export function wireTextFile(
 }
 
 function startMarker(markerId: string): string {
-  return `<!-- ${markerId}:start (managed by hollr — \`hollr unwire\` removes this) -->`;
+  return `<!-- ${markerId}:start (managed by hollr — \`hollr uninstall\`, or re-run \`hollr init\` with read-aloud off, removes this) -->`;
 }
 
 function endMarker(markerId: string): string {
