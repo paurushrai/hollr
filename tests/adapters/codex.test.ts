@@ -284,26 +284,58 @@ describe("codex.wire hooks.json blocked", () => {
 });
 
 describe("codex.unwire", () => {
-  it("should_restore_both_files_byte_identically", async () => {
+  it("should_restore_config_byte_identically_and_clear_hollr_hooks", async () => {
     writeConfig('model = "gpt-5"\n');
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(hooksPath(), `${JSON.stringify({ hooks: {} }, null, 2)}\n`, "utf8");
     const configBefore = readConfig();
-    const hooksBefore = readFileSync(hooksPath(), "utf8");
     await codex.wire(deps());
     expect(readConfig()).not.toBe(configBefore);
     await codex.unwire(deps());
     expect(readConfig()).toBe(configBefore);
-    expect(readFileSync(hooksPath(), "utf8")).toBe(hooksBefore);
+    expect(JSON.stringify(readHooks())).not.toContain(BLOCKED_COMMAND);
   });
 
-  it("should_delete_files_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_existing_but_hollr_free_files_when_nothing_preexisted", async () => {
     await codex.wire(deps());
     expect(existsSync(configPath())).toBe(true);
     expect(existsSync(hooksPath())).toBe(true);
     await codex.unwire(deps());
-    expect(existsSync(configPath())).toBe(false);
-    expect(existsSync(hooksPath())).toBe(false);
+    expect(existsSync(configPath())).toBe(true);
+    expect(existsSync(hooksPath())).toBe(true);
+    expect(readConfig()).not.toContain("notify");
+    expect(JSON.stringify(readHooks())).not.toContain(BLOCKED_COMMAND);
+  });
+
+  it("should_unwire_notify_line_but_keep_other_config_toml_keys", async () => {
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    const cfgPath = configPath();
+    // user adds their own key after wiring:
+    writeFileSync(cfgPath, `${readFileSync(cfgPath, "utf8")}model = "gpt-5"\n`);
+    await codex.unwire(testDeps);
+    const out = readFileSync(cfgPath, "utf8");
+    expect(out).not.toContain("notify");
+    expect(out).toContain('model = "gpt-5"');
+  });
+
+  it("should_unwire_only_hollr_permission_hook_and_keep_foreign", async () => {
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    const cfg = readHooks();
+    const hooks = cfg.hooks as { PermissionRequest: unknown[] };
+    hooks.PermissionRequest.push({
+      matcher: ".*",
+      hooks: [{ type: "command", command: "user-cmd" }],
+    });
+    writeFileSync(hooksPath(), JSON.stringify(cfg, null, 2));
+    await codex.unwire(testDeps);
+    const out = readHooks();
+    const entries = (out.hooks as Record<string, unknown[]> | undefined)?.PermissionRequest ?? [];
+    const cmds = (entries as Array<{ hooks: { command: string }[] }>).flatMap((entry) =>
+      entry.hooks.map((hook) => hook.command),
+    );
+    expect(cmds).toEqual(["user-cmd"]);
   });
 });
 
