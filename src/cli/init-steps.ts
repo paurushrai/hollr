@@ -15,7 +15,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { listWiredKeys } from "../adapters/diffwire.ts";
+import { listWiredKeys, unwireFromLedger } from "../adapters/diffwire.ts";
+import { injectReadaloud, readaloudLedgerKey } from "../adapters/instruction.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
 import type { Activation, HollrConfig } from "../core/config.ts";
 import {
@@ -317,6 +318,58 @@ async function stepActivation(io: InitIo, current: Activation): Promise<Activati
   return choice;
 }
 
+/**
+ * Inject (or remove) the read-aloud instruction block for every wired+capable
+ * agent. Injects only when read-aloud is the `done` mode; otherwise strips any
+ * previously injected block so toggling read-aloud off is reversible.
+ */
+async function stepInjectInstructions(
+  deps: InitDeps,
+  config: HollrConfig,
+  interactive: boolean,
+): Promise<void> {
+  const wired = new Set(listWiredKeys().map((key) => key.split(":")[0] ?? key));
+  const wantReadaloud = config.events.done.mode === "readaloud";
+  for (const adapter of deps.adapters) {
+    if (!adapter.capabilities.instructionInjection || adapter.memoryPath === undefined) {
+      continue;
+    }
+    if (!wired.has(adapter.id)) {
+      continue;
+    }
+    const path = adapter.memoryPath(adapterDeps(deps));
+    if (!wantReadaloud) {
+      unwireFromLedger(readaloudLedgerKey(adapter.id));
+      continue;
+    }
+    const op = injectReadaloud(path, config.readaloud.openCommand, adapter.id);
+    if (!op.changed) {
+      continue;
+    }
+    if (!interactive) {
+      op.apply();
+      continue;
+    }
+    deps.io.note(
+      `${adapter.title}: added a read-aloud instruction to ${path} (reversible via \`hollr unwire\`).`,
+    );
+    const seeDiff = await deps.io.confirm({
+      message: "Show exactly what changed?",
+      initialValue: false,
+    });
+    if (seeDiff) {
+      deps.io.note(op.diff, `${adapter.title} — read-aloud instruction`);
+    }
+    const keep = await deps.io.confirm({
+      message: `Keep this for ${adapter.title}?`,
+      initialValue: true,
+    });
+    if (keep) {
+      op.apply();
+    }
+  }
+}
+
 /** Print a summary and offer to preview with `hollr test`. */
 async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
   const lines = [
@@ -353,6 +406,10 @@ async function runInitYes(deps: InitDeps): Promise<InitResult> {
   // Close the legacy global http opt-in: move it onto the http targets that
   // relied on it, then clear the root flag so it can't widen a future target.
   const config = migrateHttpOptIn(loaded).config;
+  if (config.readaloud.openCommand.length === 0) {
+    config.readaloud.openCommand = defaultOpenCommand(deps.platform.id);
+  }
+  await stepInjectInstructions(deps, config, false);
   const configPath = writeGlobalConfig(config);
   return { runTest: false, configPath };
 }
@@ -387,6 +444,7 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
     defaultOpenCommand(deps.platform.id),
   );
   config.activation = activation;
+  await stepInjectInstructions(deps, config, true);
   const configPath = writeGlobalConfig(config);
   const runTest = await stepSummary(deps.io, config);
   return { runTest, configPath };

@@ -1,8 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { unwireFromLedger, wireTextFile } from "../../src/adapters/diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
 import type { Activation, HollrConfig } from "../../src/core/config.ts";
 import { DEFAULTS } from "../../src/core/config.ts";
@@ -149,10 +158,17 @@ function makeAdapter(
     detect: (_deps: AdapterDeps) => Promise.resolve(detection),
     wire: (deps: AdapterDeps) => {
       spies.wire(deps);
+      // Mirror a real adapter's contract (wire APPLIES immediately, via the
+      // ledger) so `listWiredKeys()`-based checks (e.g. instruction injection)
+      // see this adapter as wired, exactly like a production adapter would.
+      if (wireResult.changed) {
+        wireTextFile(join(deps.home, `${opts.id}.cfg`), "wired", `${opts.id}:cfg`).apply();
+      }
       return Promise.resolve(wireResult);
     },
     unwire: (deps: AdapterDeps) => {
       spies.unwire(deps);
+      unwireFromLedger(`${opts.id}:cfg`);
       return Promise.resolve();
     },
     normalize: () => null,
@@ -509,6 +525,59 @@ describe("runInit", () => {
 
     const activationCall = io.selectCalls.find((call) => call.message.includes("speak up"));
     expect(activationCall?.initialValue).toBe("opt-in");
+  });
+
+  it("should_inject_readaloud_block_into_a_wired_capable_agent", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    // capability + memoryPath on the fake:
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["claude-code"]); // wire it
+    io.confirmQueue.push(false); // show diff? no
+    io.confirmQueue.push(true); // keep wire
+    io.selectQueue.push("all"); // activation
+    io.selectQueue.push("readaloud", "announce", "notify");
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("open"); // open command
+    io.textQueue.push(""); // sound
+    io.textQueue.push(""); // quiet
+    io.confirmQueue.push(false); // add webhook
+    io.confirmQueue.push(false); // show injection diff? no
+    io.confirmQueue.push(true); // keep injection
+    io.confirmQueue.push(false); // preview test
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    const mem = readFileSync(join(userHome, ".claude", "CLAUDE.md"), "utf8");
+    expect(mem).toContain("hollr:readaloud:start");
+    expect(mem).toContain("open <file>");
+  });
+
+  it("should_not_inject_when_done_mode_is_not_readaloud", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["claude-code"]);
+    io.confirmQueue.push(false);
+    io.confirmQueue.push(true);
+    io.selectQueue.push("all");
+    io.selectQueue.push("announce", "announce", "notify"); // no readaloud
+    io.confirmQueue.push(false);
+    io.textQueue.push("");
+    io.textQueue.push("");
+    io.confirmQueue.push(false);
+    io.confirmQueue.push(false);
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+    expect(existsSync(join(userHome, ".claude", "CLAUDE.md"))).toBe(false);
   });
 });
 
