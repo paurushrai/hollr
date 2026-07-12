@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -129,5 +130,52 @@ describe("runUninstall", () => {
     );
     expect(cmds).toEqual(["user-keep"]); // hollr's gone, foreign kept
     expect(listWiredKeys()).toEqual([]);
+  });
+
+  it("should_note_unwired_once_when_a_multi_key_adapter_is_deduped", async () => {
+    writeLedger(["claude-code:settings", "claude-code:command"]);
+    const io = scriptIo({ confirm: [true, false] }); // unwire all, keep home
+    const deps: AdapterDeps = { home, which: whichNone };
+
+    await runUninstall(io, deps);
+
+    const unwiredNotes = io.notes.filter((note) => note === "Unwired Claude Code.");
+    expect(unwiredNotes).toHaveLength(1);
+  });
+
+  it("should_continue_past_a_failing_adapter_unwire_and_still_reach_delete_home_confirm", async () => {
+    const deps: AdapterDeps = { home, which: whichNone };
+    await claudeCode.wire(deps);
+
+    // Append an unrelated, always-reversible key so we can prove the loop
+    // keeps going past the claude-code entry once its unwire throws.
+    const ledgerFile = join(hollrHomeDir, "wired.json");
+    const entries = JSON.parse(readFileSync(ledgerFile, "utf8")) as unknown[];
+    entries.push({
+      ledgerKey: "unknown:cfg",
+      path: join(home, "unknown.json"),
+      before: null,
+      at: "2026-01-01T00:00:00.000Z",
+    });
+    writeFileSync(ledgerFile, JSON.stringify(entries));
+
+    // Deny writes under `.claude` so claude-code's surgical unwire throws
+    // (EACCES) when it tries to rewrite settings.json in place.
+    const claudeDir = join(home, ".claude");
+    chmodSync(claudeDir, 0o555);
+    const io = scriptIo({ confirm: [true, true] }); // reverse all, delete home
+
+    try {
+      const code = await runUninstall(io, deps);
+
+      expect(code).toBe(0);
+      expect(
+        io.notes.some((note) => note.startsWith("Could not fully reverse Claude Code:")),
+      ).toBe(true);
+      expect(io.notes).toContain("Unwired unknown:cfg.");
+      expect(io.notes).toContain("Deleted HOLLR_HOME.");
+    } finally {
+      chmodSync(claudeDir, 0o755); // restore so afterEach can rmSync tmpRoot
+    }
   });
 });
