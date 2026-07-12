@@ -241,23 +241,45 @@ describe("copilot.wire", () => {
 });
 
 describe("copilot.unwire", () => {
-  it("should_restore_prior_hooks_byte_identically", async () => {
+  it("should_unwire_only_hollr_hooks_and_keep_a_foreign_entry", async () => {
+    const testDeps = deps();
+    await copilot.wire(testDeps);
+    const cfg = readHooks();
+    (cfg.hooks as { agentStop: unknown[] }).agentStop.push({
+      type: "command",
+      command: "user",
+    });
+    writeFileSync(hooksPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+    await copilot.unwire(testDeps);
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    expect(hooks.agentStop).toEqual([{ type: "command", command: "user" }]);
+    expect(hooks.notification).toBeUndefined();
+  });
+
+  it("should_preserve_an_existing_unrelated_hook_on_unwire", async () => {
     writeHooks({
       version: 1,
       hooks: { preToolUse: [{ type: "command", command: "audit.sh" }] },
     });
-    const original = readFileSync(hooksPath(), "utf8");
     await copilot.wire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).not.toBe(original);
     await copilot.unwire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).toBe(original);
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    expect(JSON.stringify(hooks.preToolUse)).toContain("audit.sh");
+    expect(hooks.agentStop).toBeUndefined();
+    expect(hooks.notification).toBeUndefined();
   });
 
-  it("should_delete_hooks_file_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_hooks_file_without_agent_stop_or_notification_when_wiring_created_it", async () => {
+    // unwireJsonFile is surgical: it rewrites the file's CURRENT content and
+    // never tracks "did this file exist before" to delete it. A hooks.json
+    // created solely by wire survives unwire, minus the (now-empty) entries.
     await copilot.wire(deps());
     expect(existsSync(hooksPath())).toBe(true);
     await copilot.unwire(deps());
-    expect(existsSync(hooksPath())).toBe(false);
+    expect(existsSync(hooksPath())).toBe(true);
+    const out = readHooks();
+    expect(out.hooks).toBeUndefined();
+    expect(out.version).toBe(1);
   });
 
   afterEach(() => {

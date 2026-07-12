@@ -187,25 +187,46 @@ describe("cursor.wire", () => {
 });
 
 describe("cursor.unwire", () => {
-  it("should_restore_the_prior_hooks_byte_identically", async () => {
+  it("should_unwire_only_hollr_stop_hook_and_keep_foreign", async () => {
+    const testDeps = deps();
+    await cursor.wire(testDeps);
+    const cfg = readHooks();
+    (cfg.hooks as { stop: unknown[] }).stop.push({
+      type: "command",
+      command: "user-stop",
+    });
+    writeFileSync(hooksPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+    await cursor.unwire(testDeps);
+    expect(hookCommands("stop")).toEqual(["user-stop"]);
+  });
+
+  it("should_preserve_an_unrelated_hook_event_on_unwire", async () => {
     writeHooks({
       version: 1,
       hooks: {
         beforeShellExecution: [{ type: "command", command: "./approve.sh" }],
       },
     });
-    const original = readFileSync(hooksPath(), "utf8");
     await cursor.wire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).not.toBe(original);
     await cursor.unwire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).toBe(original);
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    expect(JSON.stringify(hooks.beforeShellExecution)).toContain(
+      "./approve.sh",
+    );
+    expect(hooks.stop).toBeUndefined();
   });
 
-  it("should_delete_a_hooks_file_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_the_hooks_file_without_a_stop_array_when_wiring_created_it", async () => {
+    // unwireJsonFile is surgical: it rewrites the file's CURRENT content and
+    // never tracks "did this file exist before" to delete it. A hooks.json
+    // created solely by wire survives unwire, minus the (now-empty) stop entry.
     await cursor.wire(deps());
     expect(existsSync(hooksPath())).toBe(true);
     await cursor.unwire(deps());
-    expect(existsSync(hooksPath())).toBe(false);
+    expect(existsSync(hooksPath())).toBe(true);
+    const out = readHooks();
+    expect(out.hooks).toBeUndefined();
+    expect(out.version).toBe(1);
   });
 
   afterEach(() => {

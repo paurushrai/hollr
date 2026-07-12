@@ -19,8 +19,10 @@
  *     yet officially documented, so read-aloud extracts it defensively.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
- * MUST NOT throw. `wire`/`unwire` go through the diffwire writers so every change
- * is previewable and byte-reversible.
+ * MUST NOT throw. `wire` goes through {@link wireJsonFile} so every change is
+ * previewable; `unwire` is surgical — {@link unwireJsonFile} strips only
+ * hollr's own agentStop/notification entries via {@link removeHollrHooks}, so
+ * edits a user makes after wiring survive.
  */
 
 import { closeSync, fstatSync, openSync, readSync, statSync } from "node:fs";
@@ -29,7 +31,8 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireJsonFile } from "./diffwire.ts";
+import { unwireJsonFile, wireJsonFile } from "./diffwire.ts";
+import { removeHollrHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "copilot";
@@ -185,6 +188,23 @@ function addHooks(json: JsonObject): JsonObject {
   };
 }
 
+// --- surgical unwire ---------------------------------------------------------
+
+/** The two hook commands hollr's own wiring can append. */
+const HOLLR_COMMANDS: ReadonlySet<string> = new Set([DONE_COMMAND, BLOCKED_COMMAND]);
+
+/** True for an agentStop/notification entry carrying one of hollr's own commands. */
+function isHollrEntry(entry: unknown): boolean {
+  return (
+    isRecord(entry) && typeof entry.command === "string" && HOLLR_COMMANDS.has(entry.command)
+  );
+}
+
+/** Strip hollr's agentStop/notification entries, preserving everything else. */
+function removeHooks(json: JsonObject): JsonObject {
+  return removeHollrHooks(json, [HOOK_AGENT_STOP, HOOK_NOTIFICATION], isHollrEntry);
+}
+
 // --- adapter ----------------------------------------------------------------
 
 export const copilot: Adapter = {
@@ -220,8 +240,8 @@ export const copilot: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireJsonFile(hooksPath(deps), removeHooks, LEDGER_KEY);
     return Promise.resolve();
   },
 

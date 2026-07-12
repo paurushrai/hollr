@@ -13,9 +13,10 @@
  * appends `printf '{}'` to guarantee a safe, non-"continue" decision.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
- * MUST NOT throw: every read degrades defensively. `wire`/`unwire` go through
- * {@link wireJsonFile}/{@link unwireFromLedger} so every change is previewable
- * and byte-reversible.
+ * MUST NOT throw: every read degrades defensively. `wire` goes through
+ * {@link wireJsonFile} so every change is previewable; `unwire` is surgical —
+ * {@link unwireJsonFile} strips only hollr's own `Stop` handler from the named
+ * `"hollr"` entry, so edits a user makes after wiring survive.
  */
 
 import { statSync } from "node:fs";
@@ -24,7 +25,7 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireJsonFile } from "./diffwire.ts";
+import { unwireJsonFile, wireJsonFile } from "./diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "antigravity";
@@ -107,6 +108,42 @@ function addStopHook(json: JsonObject): JsonObject {
   };
 }
 
+// --- surgical unwire ---------------------------------------------------------
+
+/** True for a `Stop` handler carrying hollr's own command. */
+function isHollrEntry(entry: unknown): boolean {
+  return isRecord(entry) && entry.command === HOLLR_STOP_COMMAND;
+}
+
+/**
+ * Strip hollr's own `Stop` handler from the named `"hollr"` entry, preserving
+ * any foreign handlers on it and every other top-level named hook entry. Drops
+ * the `"hollr"` key once its `Stop` array empties out.
+ *
+ * agy's on-disk shape is `{ hollr: { Stop: [...] }, <other-named-entry>: {...} }`
+ * — a named hook group, not the `{ hooks: { <event>: [...] } }` shape
+ * {@link removeHollrHooks} targets — so this can't reuse that shared helper.
+ */
+function removeHooks(json: JsonObject): JsonObject {
+  const existing = json[HOOK_NAME];
+  if (!isRecord(existing)) {
+    return json;
+  }
+  const stop = Array.isArray(existing[HOOK_STOP]) ? existing[HOOK_STOP] : [];
+  const kept = stop.filter((entry) => !isHollrEntry(entry));
+  const nextEntry: JsonObject = { ...existing };
+  if (kept.length > 0) {
+    nextEntry[HOOK_STOP] = kept;
+  } else {
+    delete nextEntry[HOOK_STOP];
+  }
+  if (Object.keys(nextEntry).length === 0) {
+    const { [HOOK_NAME]: _drop, ...rest } = json;
+    return rest;
+  }
+  return { ...json, [HOOK_NAME]: nextEntry };
+}
+
 // --- adapter ----------------------------------------------------------------
 
 export const antigravity: Adapter = {
@@ -142,8 +179,8 @@ export const antigravity: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireJsonFile(hooksPath(deps), removeHooks, LEDGER_KEY);
     return Promise.resolve();
   },
 

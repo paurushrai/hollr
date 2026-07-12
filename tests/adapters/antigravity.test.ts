@@ -169,24 +169,42 @@ describe("antigravity.wire", () => {
 });
 
 describe("antigravity.unwire", () => {
-  it("should_restore_the_prior_hooks_byte_identically", async () => {
+  it("should_unwire_only_the_hollr_stop_hook_and_keep_a_foreign_entry", async () => {
+    const testDeps = deps();
+    await antigravity.wire(testDeps);
+    const cfg = readHooks();
+    (cfg.hollr as { Stop: unknown[] }).Stop.push({
+      type: "command",
+      command: "user-stop",
+    });
+    writeFileSync(hooksPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+    await antigravity.unwire(testDeps);
+    const hollr = readHooks().hollr as Record<string, unknown>;
+    expect(hollr.Stop).toEqual([{ type: "command", command: "user-stop" }]);
+  });
+
+  it("should_preserve_an_unrelated_named_entry_on_unwire", async () => {
     writeHooks({
       "lint-checker": {
         PreToolUse: [{ hooks: [{ type: "command", command: "lint.sh" }] }],
       },
     });
-    const original = readFileSync(hooksPath(), "utf8");
     await antigravity.wire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).not.toBe(original);
     await antigravity.unwire(deps());
-    expect(readFileSync(hooksPath(), "utf8")).toBe(original);
+    const hooks = readHooks();
+    expect(JSON.stringify(hooks["lint-checker"])).toContain("lint.sh");
+    expect(hooks.hollr).toBeUndefined();
   });
 
-  it("should_delete_a_hooks_file_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_the_hooks_file_without_the_hollr_entry_when_wiring_created_it", async () => {
+    // unwireJsonFile is surgical: it rewrites the file's CURRENT content and
+    // never tracks "did this file exist before" to delete it. A hooks.json
+    // created solely by wire survives unwire as an empty JSON object.
     await antigravity.wire(deps());
     expect(existsSync(hooksPath())).toBe(true);
     await antigravity.unwire(deps());
-    expect(existsSync(hooksPath())).toBe(false);
+    expect(existsSync(hooksPath())).toBe(true);
+    expect(readHooks()).toEqual({});
   });
 
   afterEach(() => {
