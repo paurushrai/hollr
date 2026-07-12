@@ -42,6 +42,10 @@ interface LedgerEntry {
   /** Original file content, or `null` when the file did not exist. */
   before: string | null;
   at: string;
+  /** Reversal strategy. Absent ⇒ "file" (whole-file restore), the legacy shape. */
+  kind?: "file" | "marked";
+  /** For "marked" entries: the marker id whose block unwire strips. */
+  markerId?: string;
 }
 
 const JSON_INDENT = 2;
@@ -107,11 +111,16 @@ function isLedgerEntry(value: unknown): value is LedgerEntry {
   if (!isPlainObject(value)) {
     return false;
   }
+  const kindOk =
+    value.kind === undefined || value.kind === "file" || value.kind === "marked";
+  const markerOk = value.markerId === undefined || typeof value.markerId === "string";
   return (
     typeof value.ledgerKey === "string" &&
     typeof value.path === "string" &&
     (value.before === null || typeof value.before === "string") &&
-    typeof value.at === "string"
+    typeof value.at === "string" &&
+    kindOk &&
+    markerOk
   );
 }
 
@@ -265,7 +274,108 @@ export function wireTextFile(
   return buildWireOp(path, readFileOrNull(path), newContent, ledgerKey);
 }
 
+function startMarker(markerId: string): string {
+  return `<!-- ${markerId}:start (managed by hollr — \`hollr unwire\` removes this) -->`;
+}
+
+function endMarker(markerId: string): string {
+  return `<!-- ${markerId}:end -->`;
+}
+
+/** The full fenced block for `markerId` wrapping `body`. */
+function markedBlock(markerId: string, body: string): string {
+  return `${startMarker(markerId)}\n${body}\n${endMarker(markerId)}`;
+}
+
+/**
+ * Remove the `markerId` block (start line … end line inclusive) from `content`,
+ * collapsing the blank line that preceded it. Returns `content` unchanged when
+ * the markers are not both present.
+ */
+function stripMarkedSection(content: string, markerId: string): string {
+  const start = content.indexOf(startMarker(markerId));
+  if (start === -1) {
+    return content;
+  }
+  const endToken = endMarker(markerId);
+  const endIdx = content.indexOf(endToken, start);
+  if (endIdx === -1) {
+    return content;
+  }
+  const after = endIdx + endToken.length;
+  // Drop one leading newline (the blank line separating the block) if present.
+  const head = content.slice(0, start).replace(/\n?\n$/, "\n");
+  const tail = content.slice(after).replace(/^\n/, "");
+  return `${head}${tail}`;
+}
+
+/**
+ * Insert or replace the `markerId` block in `content`. Existing block → replace
+ * in place; absent → append after a blank line, ensuring a trailing newline.
+ */
+function upsertMarkedSection(content: string, markerId: string, body: string): string {
+  const block = markedBlock(markerId, body);
+  const start = content.indexOf(startMarker(markerId));
+  if (start !== -1) {
+    const stripped = stripMarkedSection(content, markerId);
+    const base = stripped.length === 0 || stripped.endsWith("\n") ? stripped : `${stripped}\n`;
+    return `${base}${base.length === 0 ? "" : "\n"}${block}\n`;
+  }
+  if (content.length === 0) {
+    return `${block}\n`;
+  }
+  const base = content.endsWith("\n") ? content : `${content}\n`;
+  return `${base}\n${block}\n`;
+}
+
+/**
+ * Prepare an insert/update of a marker-fenced block in a (possibly existing)
+ * plaintext instructions file. Reversal is SURGICAL: {@link unwireFromLedger}
+ * strips only the block from the file's CURRENT content, so edits the user makes
+ * after injection survive — unlike whole-file restore, which would clobber them.
+ */
+export function wireMarkedSection(
+  path: string,
+  markerId: string,
+  blockBody: string,
+  ledgerKey: string,
+): WireOp {
+  const original = readFileOrNull(path);
+  const nextContent = upsertMarkedSection(original ?? "", markerId, blockBody);
+  const oldContent = original ?? "";
+  const changed = oldContent !== nextContent;
+  return {
+    diff: renderLineDiff(oldContent, nextContent),
+    changed,
+    apply(): void {
+      if (!changed) {
+        return;
+      }
+      writeFileAtomic(path, nextContent);
+      appendLedgerEntry({
+        ledgerKey,
+        path,
+        before: original,
+        at: new Date().toISOString(),
+        kind: "marked",
+        markerId,
+      });
+    },
+  };
+}
+
 function restoreEntry(entry: LedgerEntry): void {
+  if (entry.kind === "marked" && typeof entry.markerId === "string") {
+    const current = readFileOrNull(entry.path);
+    if (current === null) {
+      return; // file gone → nothing to strip
+    }
+    const stripped = stripMarkedSection(current, entry.markerId);
+    if (stripped !== current) {
+      writeFileAtomic(entry.path, stripped);
+    }
+    return;
+  }
   if (entry.before === null) {
     try {
       rmSync(entry.path, { force: true });
