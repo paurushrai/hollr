@@ -339,6 +339,48 @@ describe("codex.unwire", () => {
   });
 });
 
+describe("codex.wire/unwire notify archive & restore", () => {
+  const USER_NOTIFY = 'notify = ["my", "cmd"]';
+
+  function notifyBackupPath(): string {
+    return join(hollrHomeDir, "codex-notify.bak");
+  }
+
+  it("should_archive_a_pre_existing_user_notify_on_wire", async () => {
+    writeConfig(`${USER_NOTIFY}\n`);
+    await codex.wire(deps());
+    expect(existsSync(notifyBackupPath())).toBe(true);
+    expect(readFileSync(notifyBackupPath(), "utf8")).toBe(USER_NOTIFY);
+    expect(readConfig()).toContain(NOTIFY_LINE);
+  });
+
+  it("should_restore_the_archived_notify_byte_for_byte_on_unwire", async () => {
+    writeConfig(`${USER_NOTIFY}\n`);
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    await codex.unwire(testDeps);
+    expect(readConfig()).toContain(USER_NOTIFY);
+    expect(readConfig()).not.toContain(NOTIFY_LINE);
+    expect(existsSync(notifyBackupPath())).toBe(false);
+  });
+
+  it("should_remove_notify_entirely_when_no_pre_existing_notify_existed", async () => {
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    expect(existsSync(notifyBackupPath())).toBe(false);
+    await codex.unwire(testDeps);
+    expect(readConfig()).not.toContain("notify");
+    expect(existsSync(notifyBackupPath())).toBe(false);
+  });
+
+  it("should_not_archive_when_the_existing_notify_is_already_hollrs_own", async () => {
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    await codex.wire(testDeps);
+    expect(existsSync(notifyBackupPath())).toBe(false);
+  });
+});
+
 describe("codex.detect", () => {
   it("should_report_installed_when_codex_is_on_path", async () => {
     const detection = await codex.detect(deps(whichCodex));

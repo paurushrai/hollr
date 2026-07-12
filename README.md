@@ -205,10 +205,11 @@ Known boundaries, so nothing surprises you:
 - **`hollr uninstall` is surgical, not a time machine.** It removes hollr's *own*
   additions from each shared config file using the file's current contents, so
   edits you made after setup are preserved. Consequences:
-  - **Codex `notify` is not restored.** Codex allows a single top-level `notify`
-    command, so hollr's setup *replaces* any `notify` you already had. Uninstall
-    removes hollr's line but cannot bring your original `notify` back — if you
-    used one, re-add it by hand.
+  - **Codex `notify` is preserved.** Codex allows a single top-level `notify`
+    command, so hollr's setup temporarily *replaces* any `notify` you already
+    had — but it archives your original first and restores it on
+    `hollr uninstall`. (If `config.toml` is deleted between setup and uninstall,
+    there's nothing to restore into.)
   - **Config files hollr *created* are left empty, not deleted.** If hollr had to
     create a shared file (e.g. an agent's `settings.json` that didn't exist),
     uninstall strips hollr's entries and leaves an empty `{}` rather than

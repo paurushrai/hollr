@@ -25,9 +25,10 @@
  * is previewable and byte-reversible.
  */
 
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
+import { hollrHome } from "../core/config.ts";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
@@ -230,6 +231,99 @@ function removeNotify(original: string | null): string | null {
   return next.join(NEWLINE);
 }
 
+// --- pre-existing user notify: archive at wire time, restore at unwire -----
+
+const NOTIFY_BACKUP_FILE = "codex-notify.bak";
+
+/** Where a pre-existing user `notify` is archived across wire → unwire. */
+function codexNotifyBackupPath(): string {
+  return join(hollrHome(), NOTIFY_BACKUP_FILE);
+}
+
+/** Read the archived notify text, or `null` when there is none. Never throws. */
+function readNotifyBackup(): string | null {
+  return readFileOrNull(codexNotifyBackupPath());
+}
+
+/** Best-effort archive write; a failure here must not block wiring. */
+function writeNotifyBackup(content: string): void {
+  try {
+    const path = codexNotifyBackupPath();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content, "utf8");
+  } catch {
+    // Archiving is best-effort — losing it degrades to today's delete-on-unwire.
+  }
+}
+
+/** Best-effort backup cleanup; a missing file is already the desired state. */
+function deleteNotifyBackup(): void {
+  try {
+    rmSync(codexNotifyBackupPath(), { force: true });
+  } catch {
+    // Nothing to clean up, or unremovable — either way, not fatal.
+  }
+}
+
+/**
+ * The exact text of the top-level `notify` assignment (single- or multi-line),
+ * or `null` when absent. Scoped to the pre-table region, like `patchNotify`.
+ */
+function extractNotify(original: string | null): string | null {
+  if (original === null) {
+    return null;
+  }
+  const lines = original.split(NEWLINE);
+  const limit = firstTableHeaderIndex(lines);
+  const start = topLevelNotifyIndex(lines, limit);
+  if (start === -1) {
+    return null;
+  }
+  const end = notifyEndIndex(lines, start, limit);
+  return lines.slice(start, end + 1).join(NEWLINE);
+}
+
+/**
+ * Archive the user's own pre-existing `notify` before hollr overwrites it, so
+ * `unwire` can restore it later. A stale backup (no user notify, or the
+ * existing notify is already hollr's own) is cleared instead.
+ */
+function archiveExistingNotify(original: string | null): void {
+  const existing = extractNotify(original);
+  if (existing !== null && existing !== notifyLine()) {
+    writeNotifyBackup(existing);
+    return;
+  }
+  deleteNotifyBackup();
+}
+
+/** Splice the archived text into hollr's notify range within `current`. */
+function restoreNotifyRange(current: string, backup: string): string {
+  const lines = current.split(NEWLINE);
+  const limit = firstTableHeaderIndex(lines);
+  const start = topLevelNotifyIndex(lines, limit);
+  if (start === -1) {
+    return current;
+  }
+  const end = notifyEndIndex(lines, start, limit);
+  return replaceNotifyRange(lines, start, end, backup);
+}
+
+/**
+ * Unwire transform: restore the user's archived `notify` in place of hollr's
+ * when a backup exists (consuming and deleting it), else fall back to the
+ * plain delete (`removeNotify`) — preserving today's no-backup behavior.
+ */
+function restoreOrRemoveNotify(current: string | null): string | null {
+  const backup = readNotifyBackup();
+  if (backup === null) {
+    return removeNotify(current);
+  }
+  const restored = current === null ? null : restoreNotifyRange(current, backup);
+  deleteNotifyBackup();
+  return restored;
+}
+
 // --- hooks.json PermissionRequest patch (Claude-style JSON) -----------------
 
 /** True when a PermissionRequest entry already carries hollr's command. */
@@ -312,11 +406,9 @@ export const codex: Adapter = {
 
   wire(deps: AdapterDeps): Promise<WireResult> {
     const cfgPath = configPath(deps);
-    const configOp = wireTextFile(
-      cfgPath,
-      patchNotify(readFileOrNull(cfgPath)),
-      CONFIG_LEDGER_KEY,
-    );
+    const originalConfig = readFileOrNull(cfgPath);
+    archiveExistingNotify(originalConfig);
+    const configOp = wireTextFile(cfgPath, patchNotify(originalConfig), CONFIG_LEDGER_KEY);
     const hooksOp = wireJsonFile(hooksPath(deps), addPermissionHook, HOOKS_LEDGER_KEY);
     const result: WireResult = {
       changed: configOp.changed || hooksOp.changed,
@@ -329,7 +421,7 @@ export const codex: Adapter = {
   },
 
   unwire(deps: AdapterDeps): Promise<void> {
-    unwireTextFile(configPath(deps), removeNotify, CONFIG_LEDGER_KEY);
+    unwireTextFile(configPath(deps), restoreOrRemoveNotify, CONFIG_LEDGER_KEY);
     unwireJsonFile(hooksPath(deps), removeHooks, HOOKS_LEDGER_KEY);
     return Promise.resolve();
   },
