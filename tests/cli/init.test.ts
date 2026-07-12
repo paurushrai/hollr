@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { unwireFromLedger, wireTextFile } from "../../src/adapters/diffwire.ts";
+import { listWiredKeys, unwireFromLedger, wireTextFile } from "../../src/adapters/diffwire.ts";
+import { injectReadaloud } from "../../src/adapters/instruction.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
 import type { Activation, HollrConfig } from "../../src/core/config.ts";
 import { DEFAULTS } from "../../src/core/config.ts";
@@ -578,6 +579,42 @@ describe("runInit", () => {
     io.confirmQueue.push(false);
     await runInit(baseDeps(io, [adapter]), { yes: false });
     expect(existsSync(join(userHome, ".claude", "CLAUDE.md"))).toBe(false);
+  });
+
+  it("should_remove_a_previously_injected_readaloud_block_when_the_adapter_is_deselected", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+    const memoryPath = join(userHome, ".claude", "CLAUDE.md");
+
+    // Seed the state a prior run would have left: hook-wired AND the
+    // read-aloud block already injected (mirrors makeAdapter's own wire()).
+    wireTextFile(join(userHome, "claude-code.cfg"), "wired", "claude-code:cfg").apply();
+    injectReadaloud(memoryPath, "open", "claude-code").apply();
+    expect(readFileSync(memoryPath, "utf8")).toContain("hollr:readaloud:start");
+    expect(listWiredKeys()).toContain("claude-code:readaloud");
+
+    const io = new ScriptIo();
+    io.multiselectQueue.push([]); // deselect claude-code -> adapter.unwire() strips only :cfg
+    io.selectQueue.push("all"); // activation
+    io.selectQueue.push("readaloud", "announce", "notify"); // done stays readaloud
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("open"); // open command
+    io.textQueue.push(""); // sound
+    io.textQueue.push(""); // quiet
+    io.confirmQueue.push(false); // add webhook
+    io.confirmQueue.push(false); // preview test
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    // Deselecting must clean up the readaloud block + ledger key too, even
+    // though `:cfg` unwiring alone never touches the `:readaloud` entry.
+    const mem = readFileSync(memoryPath, "utf8");
+    expect(mem).not.toContain("hollr:readaloud:start");
+    expect(listWiredKeys()).not.toContain("claude-code:readaloud");
   });
 });
 

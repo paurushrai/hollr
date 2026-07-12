@@ -104,9 +104,17 @@ function adapterDeps(deps: InitDeps): AdapterDeps {
   return { home: deps.home, which: deps.which };
 }
 
-/** True when the ledger holds any key owned by adapter `id` (`<id>:<suffix>`). */
+/**
+ * True when the ledger holds a hook/config key owned by adapter `id`
+ * (`<id>:<suffix>`). The `<id>:readaloud` key is deliberately excluded: it
+ * only records the instruction-block injection, not an actual wire, so an
+ * adapter that was deselected (or never wired) must not read back as "wired"
+ * just because a read-aloud block was once injected for it.
+ */
 function isWired(wiredKeys: string[], id: string): boolean {
-  return wiredKeys.some((key) => (key.split(":")[0] ?? key) === id);
+  return wiredKeys.some(
+    (key) => key !== readaloudLedgerKey(id) && (key.split(":")[0] ?? key) === id,
+  );
 }
 
 /** Capability badges, e.g. `✓done ✓blocked ✓read-aloud ✗slash`. */
@@ -319,29 +327,28 @@ async function stepActivation(io: InitIo, current: Activation): Promise<Activati
 }
 
 /**
- * Inject (or remove) the read-aloud instruction block for every wired+capable
- * agent. Injects only when read-aloud is the `done` mode; otherwise strips any
- * previously injected block so toggling read-aloud off is reversible.
+ * Inject (or remove) the read-aloud instruction block for every capable
+ * agent. Injects only when read-aloud is the `done` mode AND the adapter is
+ * actually hook-wired; otherwise strips any previously injected block, which
+ * covers both "read-aloud turned off" and "adapter deselected/unwired" so the
+ * block + its `<id>:readaloud` ledger entry never linger past either case.
  */
 async function stepInjectInstructions(
   deps: InitDeps,
   config: HollrConfig,
   interactive: boolean,
 ): Promise<void> {
-  const wired = new Set(listWiredKeys().map((key) => key.split(":")[0] ?? key));
+  const wiredKeys = listWiredKeys();
   const wantReadaloud = config.events.done.mode === "readaloud";
   for (const adapter of deps.adapters) {
     if (!adapter.capabilities.instructionInjection || adapter.memoryPath === undefined) {
       continue;
     }
-    if (!wired.has(adapter.id)) {
-      continue;
-    }
-    const path = adapter.memoryPath(adapterDeps(deps));
-    if (!wantReadaloud) {
+    if (!wantReadaloud || !isWired(wiredKeys, adapter.id)) {
       unwireFromLedger(readaloudLedgerKey(adapter.id));
       continue;
     }
+    const path = adapter.memoryPath(adapterDeps(deps));
     const op = injectReadaloud(path, config.readaloud.openCommand, adapter.id);
     if (!op.changed) {
       continue;
@@ -351,7 +358,7 @@ async function stepInjectInstructions(
       continue;
     }
     deps.io.note(
-      `${adapter.title}: added a read-aloud instruction to ${path} (reversible via \`hollr unwire\`).`,
+      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible via \`hollr unwire\`).`,
     );
     const seeDiff = await deps.io.confirm({
       message: "Show exactly what changed?",
