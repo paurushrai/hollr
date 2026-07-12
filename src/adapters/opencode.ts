@@ -61,7 +61,7 @@ const EMIT_COMMAND_PREFIX = `hollr emit --agent ${ID}`;
  * runtime `${...}` interpolations are escaped (`\${...}`) so only the adapter's
  * own constants are substituted here. Managed by hollr and fully reversible.
  */
-const PLUGIN_TEMPLATE = `// Managed by hollr — reversible via \`hollr unwire\`. Do not edit by hand.
+const PLUGIN_TEMPLATE = `// Managed by hollr — reversible via \`hollr uninstall\`. Do not edit by hand.
 // Bridges opencode lifecycle events to the hollr CLI (voice + desktop notifications).
 // opencode auto-loads .js/.ts files under ~/.config/opencode/plugin/ (and .opencode/plugin/).
 export const hollr = async ({ $, directory }) => {
