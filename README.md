@@ -256,6 +256,18 @@ npm run coverage    # vitest + v8 coverage (gate: ≥ 80%)
 npm run build       # bundle to dist/index.js via tsup
 ```
 
+## Feedback & contributing
+
+Found a bug, hit a limitation, or have an idea to make hollr better? Please
+raise it — feedback and contributions are genuinely welcome:
+
+- **GitHub Issues** — bug reports and feature requests:
+  [github.com/paurushrai/hollr/issues](https://github.com/paurushrai/hollr/issues)
+- **Email** — [paurushrai96@gmail.com](mailto:paurushrai96@gmail.com)
+
+Built by **Paurush Rai**. Portfolio and other work — and the fastest way to
+reach me directly — at **[www.paurushrai.in](https://www.paurushrai.in)**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
