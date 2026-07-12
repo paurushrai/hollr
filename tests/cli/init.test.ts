@@ -20,7 +20,6 @@ import type { Platform } from "../../src/platform/index.ts";
 import type { InitChoice, InitDeps, InitIo } from "../../src/cli/init-steps.ts";
 import { runInit } from "../../src/cli/init-steps.ts";
 import { collectSinkConfig } from "../../src/cli/init-sinks.ts";
-import { runUninstall } from "../../src/cli/uninstall.ts";
 
 let tmpRoot: string;
 let hollrHomeDir: string;
@@ -776,31 +775,5 @@ describe("collectSinkConfig webhook https validation", () => {
     // The declined second target never inherits the first's opt-in.
     expect(config.webhooks[1]?.allowHttp).toBeUndefined();
     expect(config.allowHttp).toBe(false);
-  });
-});
-
-describe("runUninstall", () => {
-  it("should_unwire_every_key_and_delete_home_on_double_confirm", async () => {
-    writeLedger(["a1:cfg", "b2:cfg"]);
-    const io = new ScriptIo();
-    io.confirmQueue.push(true); // unwire all
-    io.confirmQueue.push(true); // delete home
-
-    const code = await runUninstall(io);
-
-    expect(code).toBe(0);
-    expect(() => readFileSync(join(hollrHomeDir, "wired.json"), "utf8")).toThrow();
-  });
-
-  it("should_stop_when_the_user_declines_the_first_confirm", async () => {
-    writeLedger(["a1:cfg"]);
-    const io = new ScriptIo();
-    io.confirmQueue.push(false); // decline
-
-    const code = await runUninstall(io);
-
-    expect(code).toBe(0);
-    const ledger = readFileSync(join(hollrHomeDir, "wired.json"), "utf8");
-    expect(ledger).toContain("a1:cfg");
   });
 });

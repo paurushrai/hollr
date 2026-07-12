@@ -160,5 +160,5 @@ export async function runInitCli(
 /** `hollr uninstall` shell. */
 export function runUninstallCli(): Promise<number> {
   clack.intro("hollr uninstall");
-  return runUninstall(clackIo());
+  return runUninstall(clackIo(), { home: homedir(), which: whichOnPath });
 }
