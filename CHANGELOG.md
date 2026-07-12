@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.2.4...hollr-cli-v0.3.0) (2026-07-12)
+
+
+### Features
+
+* read-aloud speakable mode (agent instruction injection) ([#14](https://github.com/paurushrai/hollr/issues/14)) ([502359e](https://github.com/paurushrai/hollr/commit/502359ef3923747ff7affee48d1caf0e59b34ce2))
+
 ## [0.2.4](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.2.3...hollr-cli-v0.2.4) (2026-07-12)
 
 
