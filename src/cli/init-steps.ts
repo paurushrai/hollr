@@ -20,6 +20,7 @@ import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../ad
 import type { Activation, HollrConfig } from "../core/config.ts";
 import {
   DEFAULTS,
+  defaultOpenCommand,
   hollrHome,
   isConfigured,
   loadConfig,
@@ -379,7 +380,12 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
   // clears the legacy root flag.
   const existing = migrateHttpOptIn(loadConfig(process.cwd())).config;
   const activation = await stepActivation(deps.io, existing.activation);
-  const config = await collectSinkConfig(deps.io, deps.enumerateVoices, existing);
+  const config = await collectSinkConfig(
+    deps.io,
+    deps.enumerateVoices,
+    existing,
+    defaultOpenCommand(deps.platform.id),
+  );
   config.activation = activation;
   const configPath = writeGlobalConfig(config);
   const runTest = await stepSummary(deps.io, config);

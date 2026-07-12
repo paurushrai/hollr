@@ -529,16 +529,40 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add headers? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.allowHttp).toBe(false);
     expect(config.webhooks).toHaveLength(1);
     expect(config.webhooks[0]?.url).toBe("https://secure.example");
   });
 
+  it("should_prompt_for_open_command_when_done_mode_is_readaloud", async () => {
+    const io = new ScriptIo();
+    io.selectQueue.push("readaloud", "announce", "notify"); // done=readaloud
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("");        // open command → accept default
+    io.textQueue.push("");        // sound
+    io.textQueue.push("");        // quiet
+    io.confirmQueue.push(false);  // add webhook? no
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
+    expect(config.readaloud.openCommand).toBe("open");
+  });
+
+  it("should_not_prompt_for_open_command_when_readaloud_not_chosen", async () => {
+    const io = new ScriptIo();
+    io.selectQueue.push("announce", "announce", "notify");
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("");        // sound
+    io.textQueue.push("");        // quiet
+    io.confirmQueue.push(false);  // add webhook? no
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
+    expect(config.readaloud.openCommand).toBe("");
+  });
+
   it("should_select_an_enumerated_voice_and_set_quiet_hours_with_webhook_policy", async () => {
     const io = new ScriptIo();
     io.selectQueue.push("readaloud", "notify", "silent"); // modes
+    io.textQueue.push(""); // open command → accept default
     io.confirmQueue.push(true); // pick from installed voices
     io.selectQueue.push("Samantha"); // voice
     io.textQueue.push("Glass"); // sound
@@ -547,7 +571,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.selectQueue.push("suppress"); // quiet-hours webhook policy
     io.confirmQueue.push(false); // add webhook? no
 
-    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"], structuredClone(DEFAULTS), "open");
 
     expect(config.events.done.mode).toBe("readaloud");
     expect(config.voice.name).toBe("Samantha");
@@ -565,7 +589,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.textQueue.push(""); // quiet
     io.confirmQueue.push(false); // webhook
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.voice.name).toBeNull();
     expect(io.notesText()).toContain("OS default");
@@ -588,7 +612,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add another header? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.webhooks[0]?.headers).toEqual({ token: "abc123" });
     expect(io.notesText().toLowerCase()).toContain("pushover");
@@ -609,7 +633,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // headers? no
     io.confirmQueue.push(false); // another? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     // Opt-in is scoped to the target, never widened to a config-wide flag.
     expect(config.webhooks[0]?.url).toBe("http://localhost:8080");
@@ -640,7 +664,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // headers? no
     io.confirmQueue.push(false); // another? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.webhooks[0]?.allowHttp).toBe(true);
     // The declined second target never inherits the first's opt-in.
