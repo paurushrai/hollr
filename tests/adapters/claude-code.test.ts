@@ -458,7 +458,11 @@ describe("claudeCode.unwire", () => {
     expect(readFileSync(settingsPath(), "utf8")).toBe(original);
   });
 
-  it("should_restore_legacy_v1_entries_byte_identically", async () => {
+  it("should_not_resurrect_legacy_v1_entries_on_unwire", async () => {
+    // The legacy migration in `wireSettings` is one-way: it permanently retires
+    // the v0.1.x integration. Surgical unwire only removes hollr's OWN
+    // Stop/Notification entries from the file's current content — it must not
+    // (and cannot, since nothing tracks it) bring the legacy junk back.
     writeSettings({
       enabledPlugins: { "hollr@hollr-marketplace": true },
       hooks: {
@@ -467,24 +471,49 @@ describe("claudeCode.unwire", () => {
         ],
       },
     });
-    const original = readFileSync(settingsPath(), "utf8");
     await claudeCode.wire(deps());
-    expect(readFileSync(settingsPath(), "utf8")).not.toBe(original);
     await claudeCode.unwire(deps());
-    expect(readFileSync(settingsPath(), "utf8")).toBe(original);
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("hollr@hollr-marketplace");
+    expect(raw).not.toContain("announce-done.py");
+    expect(raw).not.toContain(STOP_COMMAND);
+    expect(raw).not.toContain(NOTIFICATION_COMMAND);
   });
 
-  it("should_delete_settings_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_an_empty_settings_object_when_wiring_created_the_file", async () => {
+    // unwireJsonFile is surgical: it rewrites the file's CURRENT content, it
+    // never tracks "did this file exist before" and deletes it. A settings.json
+    // created solely by wire survives unwire as an empty JSON object.
     await claudeCode.wire(deps());
     expect(existsSync(settingsPath())).toBe(true);
     await claudeCode.unwire(deps());
-    expect(existsSync(settingsPath())).toBe(false);
+    expect(existsSync(settingsPath())).toBe(true);
+    expect(readSettings()).toEqual({});
   });
 
   it("should_delete_the_command_file_on_unwire", async () => {
     await claudeCode.wire(deps());
     expect(existsSync(commandPath())).toBe(true);
     await claudeCode.unwire(deps());
+    expect(existsSync(commandPath())).toBe(false);
+  });
+
+  it("should_unwire_only_hollr_hooks_and_preserve_a_foreign_hook", async () => {
+    const wiredDeps = deps();
+    await claudeCode.wire(wiredDeps);
+    const path = settingsPath();
+    // user adds their own Stop hook AFTER wiring:
+    const cfg = JSON.parse(readFileSync(path, "utf8"));
+    cfg.hooks.Stop.push({ hooks: [{ type: "command", command: "my-own-thing" }] });
+    cfg.hooks.PreToolUse = [{ hooks: [{ command: "user-pretool" }] }];
+    writeFileSync(path, JSON.stringify(cfg, null, 2));
+    await claudeCode.unwire(wiredDeps);
+    const out = JSON.parse(readFileSync(path, "utf8"));
+    const stopCommands = (out.hooks?.Stop ?? []).flatMap((e: { hooks: { command: string }[] }) =>
+      e.hooks.map((h) => h.command),
+    );
+    expect(stopCommands).toEqual(["my-own-thing"]); // hollr's Stop gone, user's kept
+    expect(out.hooks.PreToolUse).toEqual([{ hooks: [{ command: "user-pretool" }] }]);
     expect(existsSync(commandPath())).toBe(false);
   });
 

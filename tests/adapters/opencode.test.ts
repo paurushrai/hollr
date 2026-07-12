@@ -147,21 +147,23 @@ describe("opencode.wire plugin template", () => {
 });
 
 describe("opencode.unwire", () => {
-  it("should_delete_a_plugin_file_that_did_not_exist_before_wiring", async () => {
-    await opencode.wire(deps());
+  it("should_delete_the_plugin_file_on_unwire", async () => {
+    const testDeps = deps();
+    await opencode.wire(testDeps);
     expect(existsSync(pluginPath())).toBe(true);
-    await opencode.unwire(deps());
+    await opencode.unwire(testDeps);
     expect(existsSync(pluginPath())).toBe(false);
   });
 
-  it("should_restore_a_pre_existing_plugin_file_byte_for_byte", async () => {
+  it("should_delete_a_pre_existing_plugin_file_outright_not_restore_it", async () => {
+    // unwireCreatedFile always deletes the file it owns: the plugin is a whole
+    // file hollr owns outright, not a section of a shared config, so unwire
+    // does not attempt to restore whatever (if anything) was there before.
     mkdirSync(join(home, ".config", "opencode", "plugin"), { recursive: true });
-    const original = "export const mine = async () => ({});\n";
-    writeFileSync(pluginPath(), original, "utf8");
+    writeFileSync(pluginPath(), "export const mine = async () => ({});\n", "utf8");
     await opencode.wire(deps());
-    expect(readFileSync(pluginPath(), "utf8")).not.toBe(original);
     await opencode.unwire(deps());
-    expect(readFileSync(pluginPath(), "utf8")).toBe(original);
+    expect(existsSync(pluginPath())).toBe(false);
   });
 });
 

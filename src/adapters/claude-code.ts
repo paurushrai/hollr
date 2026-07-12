@@ -6,9 +6,12 @@
  * `~/.claude/settings.json` to invoke `hollr emit`.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
- * MUST NOT throw: every read degrades defensively. `wire`/`unwire` go through
- * {@link wireJsonFile}/{@link unwireFromLedger} so every change is previewable
- * and byte-reversible.
+ * MUST NOT throw: every read degrades defensively. `wire` goes through
+ * {@link wireJsonFile}/{@link wireTextFile} so every change is previewable;
+ * `unwire` is surgical — {@link unwireJsonFile} strips only hollr's own hook
+ * entries via {@link removeHollrHooks}, and {@link unwireCreatedFile} deletes
+ * the slash-command file hollr created — so edits a user makes after wiring
+ * survive.
  */
 
 import { closeSync, fstatSync, openSync, readFileSync, readSync, statSync } from "node:fs";
@@ -17,7 +20,8 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireJsonFile, wireTextFile } from "./diffwire.ts";
+import { unwireCreatedFile, unwireJsonFile, wireJsonFile, wireTextFile } from "./diffwire.ts";
+import { removeHollrHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "claude-code";
@@ -263,6 +267,27 @@ function addHooks(json: JsonObject): JsonObject {
   };
 }
 
+// --- surgical unwire ---------------------------------------------------------
+
+/** The two hook commands hollr's own wiring can append. */
+const HOLLR_COMMANDS: ReadonlySet<string> = new Set([STOP_COMMAND, NOTIFICATION_COMMAND]);
+
+/** Shape-A entry (`{ hooks: [{ command }] }`) carrying one of hollr's commands. */
+function isHollrEntry(entry: unknown): boolean {
+  return (
+    isRecord(entry) &&
+    Array.isArray(entry.hooks) &&
+    entry.hooks.some(
+      (hook) => isRecord(hook) && typeof hook.command === "string" && HOLLR_COMMANDS.has(hook.command),
+    )
+  );
+}
+
+/** Strip hollr's Stop/Notification hook entries, preserving everything else. */
+function removeHooks(json: JsonObject): JsonObject {
+  return removeHollrHooks(json, [HOOK_STOP, HOOK_NOTIFICATION], isHollrEntry);
+}
+
 // --- legacy v0.1.x cleanup --------------------------------------------------
 
 /** True when a hook command string references a legacy v1 Python script. */
@@ -450,9 +475,9 @@ export const claudeCode: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(LEDGER_KEY);
-    unwireFromLedger(COMMAND_LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireJsonFile(settingsPath(deps), removeHooks, LEDGER_KEY);
+    unwireCreatedFile(commandPath(deps), COMMAND_LEDGER_KEY);
     return Promise.resolve();
   },
 

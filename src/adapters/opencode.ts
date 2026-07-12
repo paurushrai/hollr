@@ -25,8 +25,10 @@
  * `done` — {@link readLastResponse} always yields `null` and never throws.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) the plugin
- * and MUST NOT throw. `wire`/`unwire` go through {@link wireTextFile}/
- * {@link unwireFromLedger} so the created file is previewable and byte-reversible.
+ * and MUST NOT throw. `wire` goes through {@link wireTextFile} so the write is
+ * previewable; `unwire` is surgical — {@link unwireCreatedFile} simply deletes
+ * the plugin file hollr owns outright (this is a whole file hollr creates, not
+ * a section of a shared config, so there is nothing to preserve around it).
  */
 
 import { statSync } from "node:fs";
@@ -35,7 +37,7 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireTextFile } from "./diffwire.ts";
+import { unwireCreatedFile, wireTextFile } from "./diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "opencode";
@@ -149,8 +151,8 @@ export const opencode: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireCreatedFile(pluginPath(deps), LEDGER_KEY);
     return Promise.resolve();
   },
 

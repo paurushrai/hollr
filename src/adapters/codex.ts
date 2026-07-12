@@ -31,11 +31,8 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import {
-  unwireFromLedger,
-  wireJsonFile,
-  wireTextFile,
-} from "./diffwire.ts";
+import { unwireJsonFile, unwireTextFile, wireJsonFile, wireTextFile } from "./diffwire.ts";
+import { removeHollrHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "codex";
@@ -212,6 +209,27 @@ function patchNotify(original: string | null): string {
   return insertNotifyLine(original, lines, target);
 }
 
+/**
+ * Surgically strip the top-level hollr `notify` assignment, leaving every
+ * other key untouched. Absent notify ⇒ original returned as-is; absent file
+ * ⇒ `null` (nothing to write).
+ */
+function removeNotify(original: string | null): string | null {
+  if (original === null) {
+    return null;
+  }
+  const lines = original.split(NEWLINE);
+  const limit = firstTableHeaderIndex(lines);
+  const start = topLevelNotifyIndex(lines, limit);
+  if (start === -1) {
+    return original;
+  }
+  const end = notifyEndIndex(lines, start, limit);
+  const next = [...lines];
+  next.splice(start, end - start + 1);
+  return next.join(NEWLINE);
+}
+
 // --- hooks.json PermissionRequest patch (Claude-style JSON) -----------------
 
 /** True when a PermissionRequest entry already carries hollr's command. */
@@ -252,6 +270,11 @@ function addPermissionHook(json: JsonObject): JsonObject {
       [HOOK_EVENT]: appendPermissionEntry(hooks[HOOK_EVENT]),
     },
   };
+}
+
+/** Surgically remove only hollr's PermissionRequest entry, keeping the rest. */
+function removeHooks(json: JsonObject): JsonObject {
+  return removeHollrHooks(json, [HOOK_EVENT], entryHasCommand);
 }
 
 /** Concatenate the non-empty per-file diffs. */
@@ -305,9 +328,9 @@ export const codex: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(CONFIG_LEDGER_KEY);
-    unwireFromLedger(HOOKS_LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireTextFile(configPath(deps), removeNotify, CONFIG_LEDGER_KEY);
+    unwireJsonFile(hooksPath(deps), removeHooks, HOOKS_LEDGER_KEY);
     return Promise.resolve();
   },
 

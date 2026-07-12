@@ -19,9 +19,10 @@
  * {@link readLastResponse} never parses it and always yields `null`.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
- * MUST NOT throw: every read degrades defensively. `wire`/`unwire` go through
- * {@link wireJsonFile}/{@link unwireFromLedger} so every change is previewable
- * and byte-reversible.
+ * MUST NOT throw: every read degrades defensively. `wire` goes through
+ * {@link wireJsonFile} so every change is previewable; `unwire` is surgical —
+ * {@link unwireJsonFile} strips only hollr's own `stop` entry via
+ * {@link removeHollrHooks}, so edits a user makes after wiring survive.
  */
 
 import { statSync } from "node:fs";
@@ -30,7 +31,8 @@ import { join } from "node:path";
 import type { EventName } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireFromLedger, wireJsonFile } from "./diffwire.ts";
+import { unwireJsonFile, wireJsonFile } from "./diffwire.ts";
+import { removeHollrHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "cursor";
@@ -116,6 +118,18 @@ function addHooks(json: JsonObject): JsonObject {
   };
 }
 
+// --- surgical unwire ---------------------------------------------------------
+
+/** True for a `stop` entry carrying hollr's own command. */
+function isHollrEntry(entry: unknown): boolean {
+  return isRecord(entry) && entry.command === STOP_COMMAND;
+}
+
+/** Strip hollr's `stop` entry, preserving any foreign entries and every other event. */
+function removeHooks(json: JsonObject): JsonObject {
+  return removeHollrHooks(json, [HOOK_STOP], isHollrEntry);
+}
+
 // --- adapter ----------------------------------------------------------------
 
 export const cursor: Adapter = {
@@ -152,8 +166,8 @@ export const cursor: Adapter = {
     return Promise.resolve(result);
   },
 
-  unwire(_deps: AdapterDeps): Promise<void> {
-    unwireFromLedger(LEDGER_KEY);
+  unwire(deps: AdapterDeps): Promise<void> {
+    unwireJsonFile(hooksPath(deps), removeHooks, LEDGER_KEY);
     return Promise.resolve();
   },
 
