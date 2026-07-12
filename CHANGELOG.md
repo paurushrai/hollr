@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.4.0...hollr-cli-v0.5.0) (2026-07-12)
+
+
+### Features
+
+* **codex:** archive & restore user notify across wire/uninstall ([#21](https://github.com/paurushrai/hollr/issues/21)) ([1a1ab16](https://github.com/paurushrai/hollr/commit/1a1ab16aac714f03f368216a261d0ef63345dd0e))
+
 ## [0.4.0](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.3.0...hollr-cli-v0.4.0) (2026-07-12)
 
 
