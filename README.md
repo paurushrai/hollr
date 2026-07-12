@@ -82,6 +82,24 @@ hardware-end-to-end verified.
 > Gemini, opencode, Amp, and Cursor integrations were built against their
 > published hook/config docs.
 
+### Read-aloud "speakable mode"
+
+When you pick **read-aloud** for the `done` event during `hollr init`, hollr can
+add a small, clearly-marked instruction to each supported agent's global memory
+file (Claude Code `~/.claude/CLAUDE.md`, Codex `~/.codex/AGENTS.md`, Gemini
+`~/.gemini/GEMINI.md`). It asks the model to keep its final message speakable and
+to write code or dense detail to a temp `.md` file it opens with your chosen
+markdown command instead of speaking it.
+
+- **Opt-in** — offered only when read-aloud is your `done` mode, only for agents
+  you wire.
+- **Reversible** — it's a marked block; `hollr unwire` removes just that block
+  and leaves the rest of your file untouched.
+- **Best-effort** — it's a prompt nudge, not a guarantee; models may not always
+  comply.
+- **Tidy** — temp files live under `~/.config/hollr/readaloud/` and are
+  auto-removed after 24h.
+
 ## Webhooks
 
 Get pinged on your phone or a chat channel when an agent finishes. hollr
