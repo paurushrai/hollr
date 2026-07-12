@@ -405,7 +405,17 @@ export const claudeCode: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Claude Code — done/blocked hooks and transcript read-aloud",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: true },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: true,
+    instructionInjection: true,
+  },
+
+  memoryPath(deps: AdapterDeps): string {
+    return join(deps.home, ".claude", "CLAUDE.md");
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const path = settingsPath(deps);

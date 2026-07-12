@@ -92,6 +92,7 @@ describe("gemini.capabilities", () => {
       blocked: true,
       readAloud: true,
       slashCommand: true,
+      instructionInjection: true,
     });
   });
 });
@@ -267,5 +268,12 @@ describe("gemini.detect", () => {
   it("should_report_not_installed_on_a_bare_home", async () => {
     const detection = await gemini.detect(deps(whichNone));
     expect(detection.installed).toBe(false);
+  });
+
+  it("should_expose_global_GEMINI_md_as_its_memory_path", () => {
+    expect(gemini.capabilities.instructionInjection).toBe(true);
+    expect(gemini.memoryPath?.({ home: "/home/u", which: () => null })).toBe(
+      "/home/u/.gemini/GEMINI.md",
+    );
   });
 });

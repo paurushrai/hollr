@@ -139,7 +139,13 @@ function makeAdapter(
     id: opts.id,
     title: opts.id.toUpperCase(),
     tagline: `the ${opts.id} agent`,
-    capabilities: { done: true, blocked: true, readAloud: true, slashCommand: false },
+    capabilities: {
+      done: true,
+      blocked: true,
+      readAloud: true,
+      slashCommand: false,
+      instructionInjection: false,
+    },
     detect: (_deps: AdapterDeps) => Promise.resolve(detection),
     wire: (deps: AdapterDeps) => {
       spies.wire(deps);

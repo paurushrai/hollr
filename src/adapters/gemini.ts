@@ -135,7 +135,17 @@ export const gemini: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Google Gemini CLI — AfterAgent done, Notification blocked, /hollr command",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: true },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: true,
+    instructionInjection: true,
+  },
+
+  memoryPath(deps: AdapterDeps): string {
+    return join(deps.home, CONFIG_DIR, "GEMINI.md");
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     // Primary (and only) positive signal is the binary on PATH: `~/.gemini`

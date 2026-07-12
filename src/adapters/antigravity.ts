@@ -113,7 +113,13 @@ export const antigravity: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Google's agentic CLI (agy)",
-  capabilities: { done: true, blocked: false, readAloud: false, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: false,
+    readAloud: false,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =

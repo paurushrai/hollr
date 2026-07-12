@@ -22,7 +22,13 @@ export const wrapper: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Universal wrapper — announce any agent via `hollr run -- <cmd>`",
-  capabilities: { done: true, blocked: false, readAloud: true, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: false,
+    readAloud: true,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(_deps: AdapterDeps): Promise<Detection> {
     return Promise.resolve({ installed: true });

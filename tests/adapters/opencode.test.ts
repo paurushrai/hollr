@@ -69,6 +69,7 @@ describe("opencode.capabilities", () => {
       blocked: true,
       readAloud: false,
       slashCommand: false,
+      instructionInjection: false,
     });
   });
 });

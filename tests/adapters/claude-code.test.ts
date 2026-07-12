@@ -90,6 +90,7 @@ describe("claudeCode.capabilities", () => {
       blocked: true,
       readAloud: true,
       slashCommand: true,
+      instructionInjection: true,
     });
   });
 });
@@ -525,5 +526,12 @@ describe("claudeCode.detect", () => {
     mkdirSync(join(home, ".claude"), { recursive: true });
     writeFileSync(settingsPath(), "{ not json", "utf8");
     await expect(claudeCode.detect(deps(whichNone))).resolves.toBeDefined();
+  });
+
+  it("should_expose_the_global_CLAUDE_md_as_its_memory_path", () => {
+    expect(claudeCode.capabilities.instructionInjection).toBe(true);
+    expect(claudeCode.memoryPath?.({ home: "/home/u", which: () => null })).toBe(
+      "/home/u/.claude/CLAUDE.md",
+    );
   });
 });

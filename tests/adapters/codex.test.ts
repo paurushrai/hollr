@@ -98,6 +98,7 @@ describe("codex.capabilities", () => {
       blocked: true,
       readAloud: true,
       slashCommand: false,
+      instructionInjection: true,
     });
   });
 });
@@ -322,5 +323,12 @@ describe("codex.detect", () => {
   it("should_report_not_installed_on_a_bare_home", async () => {
     const detection = await codex.detect(deps(whichNone));
     expect(detection.installed).toBe(false);
+  });
+
+  it("should_expose_global_AGENTS_md_as_its_memory_path", () => {
+    expect(codex.capabilities.instructionInjection).toBe(true);
+    expect(codex.memoryPath?.({ home: "/home/u", which: () => null })).toBe(
+      "/home/u/.codex/AGENTS.md",
+    );
   });
 });

@@ -191,7 +191,13 @@ export const copilot: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "GitHub Copilot CLI — agentStop/notification hooks and read-aloud",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =

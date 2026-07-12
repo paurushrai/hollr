@@ -43,6 +43,8 @@ export interface AdapterCapabilities {
   blocked: boolean;
   readAloud: boolean;
   slashCommand: boolean;
+  /** Whether hollr can inject a read-aloud instruction into the agent's global memory file. */
+  instructionInjection: boolean;
 }
 
 /**
@@ -62,4 +64,10 @@ export interface Adapter {
   normalize(raw: unknown, eventHint: EventName): HollrEvent | null;
   /** Read the agent's last assistant response (e.g. from a transcript in `raw`). */
   readLastResponse(raw: unknown): Promise<string | null>;
+  /**
+   * Absolute path to the agent's GLOBAL standing-instructions file (e.g.
+   * `~/.claude/CLAUDE.md`). Present only when `capabilities.instructionInjection`
+   * is true; hollr injects the read-aloud block here.
+   */
+  memoryPath?(deps: AdapterDeps): string;
 }

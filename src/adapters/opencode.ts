@@ -120,7 +120,13 @@ export const opencode: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "sst opencode — plugin bridges session.idle done and permission.asked blocked",
-  capabilities: { done: true, blocked: true, readAloud: false, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: false,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =
