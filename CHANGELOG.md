@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.3.0...hollr-cli-v0.4.0) (2026-07-12)
+
+
+### Features
+
+* surgical unwire — never clobber post-wire agent config ([#16](https://github.com/paurushrai/hollr/issues/16)) ([7d89ce8](https://github.com/paurushrai/hollr/commit/7d89ce804349a02500c942f9db5144cbb055b3a0))
+
 ## [0.3.0](https://github.com/paurushrai/hollr/compare/hollr-cli-v0.2.4...hollr-cli-v0.3.0) (2026-07-12)
 
 
