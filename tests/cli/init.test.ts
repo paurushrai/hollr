@@ -1,8 +1,18 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { listWiredKeys, unwireFromLedger, wireTextFile } from "../../src/adapters/diffwire.ts";
+import { injectReadaloud } from "../../src/adapters/instruction.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
 import type { Activation, HollrConfig } from "../../src/core/config.ts";
 import { DEFAULTS } from "../../src/core/config.ts";
@@ -139,14 +149,27 @@ function makeAdapter(
     id: opts.id,
     title: opts.id.toUpperCase(),
     tagline: `the ${opts.id} agent`,
-    capabilities: { done: true, blocked: true, readAloud: true, slashCommand: false },
+    capabilities: {
+      done: true,
+      blocked: true,
+      readAloud: true,
+      slashCommand: false,
+      instructionInjection: false,
+    },
     detect: (_deps: AdapterDeps) => Promise.resolve(detection),
     wire: (deps: AdapterDeps) => {
       spies.wire(deps);
+      // Mirror a real adapter's contract (wire APPLIES immediately, via the
+      // ledger) so `listWiredKeys()`-based checks (e.g. instruction injection)
+      // see this adapter as wired, exactly like a production adapter would.
+      if (wireResult.changed) {
+        wireTextFile(join(deps.home, `${opts.id}.cfg`), "wired", `${opts.id}:cfg`).apply();
+      }
       return Promise.resolve(wireResult);
     },
     unwire: (deps: AdapterDeps) => {
       spies.unwire(deps);
+      unwireFromLedger(`${opts.id}:cfg`);
       return Promise.resolve();
     },
     normalize: () => null,
@@ -504,6 +527,95 @@ describe("runInit", () => {
     const activationCall = io.selectCalls.find((call) => call.message.includes("speak up"));
     expect(activationCall?.initialValue).toBe("opt-in");
   });
+
+  it("should_inject_readaloud_block_into_a_wired_capable_agent", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    // capability + memoryPath on the fake:
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["claude-code"]); // wire it
+    io.confirmQueue.push(false); // show diff? no
+    io.confirmQueue.push(true); // keep wire
+    io.selectQueue.push("all"); // activation
+    io.selectQueue.push("readaloud", "announce", "notify");
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("open"); // open command
+    io.textQueue.push(""); // sound
+    io.textQueue.push(""); // quiet
+    io.confirmQueue.push(false); // add webhook
+    io.confirmQueue.push(false); // show injection diff? no
+    io.confirmQueue.push(true); // keep injection
+    io.confirmQueue.push(false); // preview test
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    const mem = readFileSync(join(userHome, ".claude", "CLAUDE.md"), "utf8");
+    expect(mem).toContain("hollr:readaloud:start");
+    expect(mem).toContain("open <file>");
+  });
+
+  it("should_not_inject_when_done_mode_is_not_readaloud", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+    const io = new ScriptIo();
+    io.multiselectQueue.push(["claude-code"]);
+    io.confirmQueue.push(false);
+    io.confirmQueue.push(true);
+    io.selectQueue.push("all");
+    io.selectQueue.push("announce", "announce", "notify"); // no readaloud
+    io.confirmQueue.push(false);
+    io.textQueue.push("");
+    io.textQueue.push("");
+    io.confirmQueue.push(false);
+    io.confirmQueue.push(false);
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+    expect(existsSync(join(userHome, ".claude", "CLAUDE.md"))).toBe(false);
+  });
+
+  it("should_remove_a_previously_injected_readaloud_block_when_the_adapter_is_deselected", async () => {
+    const adapter = makeAdapter(
+      { id: "claude-code", installed: true },
+      { wire: vi.fn(), unwire: vi.fn() },
+    );
+    adapter.capabilities.instructionInjection = true;
+    adapter.memoryPath = (d: AdapterDeps) => join(d.home, ".claude", "CLAUDE.md");
+    const memoryPath = join(userHome, ".claude", "CLAUDE.md");
+
+    // Seed the state a prior run would have left: hook-wired AND the
+    // read-aloud block already injected (mirrors makeAdapter's own wire()).
+    wireTextFile(join(userHome, "claude-code.cfg"), "wired", "claude-code:cfg").apply();
+    injectReadaloud(memoryPath, "open", "claude-code").apply();
+    expect(readFileSync(memoryPath, "utf8")).toContain("hollr:readaloud:start");
+    expect(listWiredKeys()).toContain("claude-code:readaloud");
+
+    const io = new ScriptIo();
+    io.multiselectQueue.push([]); // deselect claude-code -> adapter.unwire() strips only :cfg
+    io.selectQueue.push("all"); // activation
+    io.selectQueue.push("readaloud", "announce", "notify"); // done stays readaloud
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("open"); // open command
+    io.textQueue.push(""); // sound
+    io.textQueue.push(""); // quiet
+    io.confirmQueue.push(false); // add webhook
+    io.confirmQueue.push(false); // preview test
+
+    await runInit(baseDeps(io, [adapter]), { yes: false });
+
+    // Deselecting must clean up the readaloud block + ledger key too, even
+    // though `:cfg` unwiring alone never touches the `:readaloud` entry.
+    const mem = readFileSync(memoryPath, "utf8");
+    expect(mem).not.toContain("hollr:readaloud:start");
+    expect(listWiredKeys()).not.toContain("claude-code:readaloud");
+  });
 });
 
 describe("collectSinkConfig webhook https validation", () => {
@@ -523,16 +635,40 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add headers? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.allowHttp).toBe(false);
     expect(config.webhooks).toHaveLength(1);
     expect(config.webhooks[0]?.url).toBe("https://secure.example");
   });
 
+  it("should_prompt_for_open_command_when_done_mode_is_readaloud", async () => {
+    const io = new ScriptIo();
+    io.selectQueue.push("readaloud", "announce", "notify"); // done=readaloud
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("");        // open command → accept default
+    io.textQueue.push("");        // sound
+    io.textQueue.push("");        // quiet
+    io.confirmQueue.push(false);  // add webhook? no
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
+    expect(config.readaloud.openCommand).toBe("open");
+  });
+
+  it("should_not_prompt_for_open_command_when_readaloud_not_chosen", async () => {
+    const io = new ScriptIo();
+    io.selectQueue.push("announce", "announce", "notify");
+    io.confirmQueue.push(false); // voices
+    io.textQueue.push("");        // sound
+    io.textQueue.push("");        // quiet
+    io.confirmQueue.push(false);  // add webhook? no
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
+    expect(config.readaloud.openCommand).toBe("");
+  });
+
   it("should_select_an_enumerated_voice_and_set_quiet_hours_with_webhook_policy", async () => {
     const io = new ScriptIo();
     io.selectQueue.push("readaloud", "notify", "silent"); // modes
+    io.textQueue.push(""); // open command → accept default
     io.confirmQueue.push(true); // pick from installed voices
     io.selectQueue.push("Samantha"); // voice
     io.textQueue.push("Glass"); // sound
@@ -541,7 +677,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.selectQueue.push("suppress"); // quiet-hours webhook policy
     io.confirmQueue.push(false); // add webhook? no
 
-    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => ["Alex", "Samantha"], structuredClone(DEFAULTS), "open");
 
     expect(config.events.done.mode).toBe("readaloud");
     expect(config.voice.name).toBe("Samantha");
@@ -559,7 +695,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.textQueue.push(""); // quiet
     io.confirmQueue.push(false); // webhook
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.voice.name).toBeNull();
     expect(io.notesText()).toContain("OS default");
@@ -582,7 +718,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // add another header? no
     io.confirmQueue.push(false); // add another webhook? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.webhooks[0]?.headers).toEqual({ token: "abc123" });
     expect(io.notesText().toLowerCase()).toContain("pushover");
@@ -603,7 +739,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // headers? no
     io.confirmQueue.push(false); // another? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     // Opt-in is scoped to the target, never widened to a config-wide flag.
     expect(config.webhooks[0]?.url).toBe("http://localhost:8080");
@@ -634,7 +770,7 @@ describe("collectSinkConfig webhook https validation", () => {
     io.confirmQueue.push(false); // headers? no
     io.confirmQueue.push(false); // another? no
 
-    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS));
+    const config = await collectSinkConfig(io, () => [], structuredClone(DEFAULTS), "open");
 
     expect(config.webhooks[0]?.allowHttp).toBe(true);
     // The declined second target never inherits the first's opt-in.

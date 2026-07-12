@@ -123,7 +123,13 @@ export const cursor: Adapter = {
   title: TITLE,
   tagline:
     "Cursor Agent (cursor-agent) — done via stop hook (read-aloud/blocked come via the wrapper)",
-  capabilities: { done: true, blocked: false, readAloud: false, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: false,
+    readAloud: false,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =

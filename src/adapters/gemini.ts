@@ -61,9 +61,9 @@ const LAST_RESPONSE_FIELD = "prompt_response";
 /**
  * The `/hollr` custom command hollr owns. `!{...}` runs the shell command and
  * embeds its stdout; `{{args}}` is shell-escaped inside the block. Managed by
- * hollr and fully reversible via `hollr unwire`.
+ * hollr and fully reversible via `hollr uninstall`.
  */
-const COMMAND_TEMPLATE = `# Managed by hollr — reversible via \`hollr unwire\`. Do not edit by hand.
+const COMMAND_TEMPLATE = `# Managed by hollr — reversible via \`hollr uninstall\`. Do not edit by hand.
 description = "Run the hollr CLI (voice + desktop notifications) from inside Gemini"
 prompt = """
 Below is the raw output of the hollr command-line tool. Relay it to the user as-is.
@@ -135,7 +135,17 @@ export const gemini: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Google Gemini CLI — AfterAgent done, Notification blocked, /hollr command",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: true },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: true,
+    instructionInjection: true,
+  },
+
+  memoryPath(deps: AdapterDeps): string {
+    return join(deps.home, CONFIG_DIR, "GEMINI.md");
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     // Primary (and only) positive signal is the binary on PATH: `~/.gemini`

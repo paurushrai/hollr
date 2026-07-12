@@ -87,6 +87,7 @@ describe("cursor.capabilities & tagline", () => {
       blocked: false,
       readAloud: false,
       slashCommand: false,
+      instructionInjection: false,
     });
   });
 

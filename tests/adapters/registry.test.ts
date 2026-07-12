@@ -23,3 +23,23 @@ describe("adapters registry", () => {
     expect(detectable.length).toBeGreaterThan(0);
   });
 });
+
+describe("instructionInjection capability contract", () => {
+  it("should_declare_the_capability_on_every_adapter", () => {
+    for (const a of adapters) {
+      expect(typeof a.capabilities.instructionInjection).toBe("boolean");
+    }
+  });
+
+  it("should_expose_memoryPath_iff_capable", () => {
+    const deps = { home: "/home/u", which: () => null };
+    for (const a of adapters) {
+      if (a.capabilities.instructionInjection) {
+        expect(typeof a.memoryPath).toBe("function");
+        expect(a.memoryPath?.(deps).length).toBeGreaterThan(0);
+      } else {
+        expect(a.memoryPath).toBeUndefined();
+      }
+    }
+  });
+});

@@ -35,13 +35,13 @@ const ENABLED_PLUGINS_KEY = "enabledPlugins";
  * `$ARGUMENTS` with the user's text, and the body instructs Claude to run the
  * global `hollr` CLI and relay its output. `init` is deliberately excluded — it
  * is an interactive terminal-only wizard, not a slash-command action. Managed by
- * hollr and fully reversible via `hollr unwire`.
+ * hollr and fully reversible via `hollr uninstall`.
  */
 const COMMAND_TEMPLATE = `---
 description: Control hollr (pause/resume/stop/status/mute/doctor)
 ---
 
-Managed by hollr — reversible via \`hollr unwire\`. Do not edit by hand.
+Managed by hollr — reversible via \`hollr uninstall\`. Do not edit by hand.
 
 Run this shell command and relay its output to the user verbatim:
 
@@ -359,7 +359,7 @@ function legacyMarker(rawText: string | null): string | null {
 function legacyMessage(marker: string): string {
   return (
     `legacy hollr v1 integration detected in settings (${marker}); ` +
-    "`hollr init` removes it as part of wiring (reversible via `hollr unwire`)"
+    "`hollr init` removes it as part of wiring (reversible via `hollr uninstall`)"
   );
 }
 
@@ -405,7 +405,17 @@ export const claudeCode: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Claude Code — done/blocked hooks and transcript read-aloud",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: true },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: true,
+    instructionInjection: true,
+  },
+
+  memoryPath(deps: AdapterDeps): string {
+    return join(deps.home, ".claude", "CLAUDE.md");
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const path = settingsPath(deps);

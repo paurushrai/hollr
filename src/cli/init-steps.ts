@@ -15,11 +15,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { listWiredKeys } from "../adapters/diffwire.ts";
+import { listWiredKeys, unwireFromLedger } from "../adapters/diffwire.ts";
+import { injectReadaloud, readaloudLedgerKey } from "../adapters/instruction.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
 import type { Activation, HollrConfig } from "../core/config.ts";
 import {
   DEFAULTS,
+  defaultOpenCommand,
   hollrHome,
   isConfigured,
   loadConfig,
@@ -102,9 +104,17 @@ function adapterDeps(deps: InitDeps): AdapterDeps {
   return { home: deps.home, which: deps.which };
 }
 
-/** True when the ledger holds any key owned by adapter `id` (`<id>:<suffix>`). */
+/**
+ * True when the ledger holds a hook/config key owned by adapter `id`
+ * (`<id>:<suffix>`). The `<id>:readaloud` key is deliberately excluded: it
+ * only records the instruction-block injection, not an actual wire, so an
+ * adapter that was deselected (or never wired) must not read back as "wired"
+ * just because a read-aloud block was once injected for it.
+ */
 function isWired(wiredKeys: string[], id: string): boolean {
-  return wiredKeys.some((key) => (key.split(":")[0] ?? key) === id);
+  return wiredKeys.some(
+    (key) => key !== readaloudLedgerKey(id) && (key.split(":")[0] ?? key) === id,
+  );
 }
 
 /** Capability badges, e.g. `✓done ✓blocked ✓read-aloud ✗slash`. */
@@ -316,6 +326,57 @@ async function stepActivation(io: InitIo, current: Activation): Promise<Activati
   return choice;
 }
 
+/**
+ * Inject (or remove) the read-aloud instruction block for every capable
+ * agent. Injects only when read-aloud is the `done` mode AND the adapter is
+ * actually hook-wired; otherwise strips any previously injected block, which
+ * covers both "read-aloud turned off" and "adapter deselected/unwired" so the
+ * block + its `<id>:readaloud` ledger entry never linger past either case.
+ */
+async function stepInjectInstructions(
+  deps: InitDeps,
+  config: HollrConfig,
+  interactive: boolean,
+): Promise<void> {
+  const wiredKeys = listWiredKeys();
+  const wantReadaloud = config.events.done.mode === "readaloud";
+  for (const adapter of deps.adapters) {
+    if (!adapter.capabilities.instructionInjection || adapter.memoryPath === undefined) {
+      continue;
+    }
+    if (!wantReadaloud || !isWired(wiredKeys, adapter.id)) {
+      unwireFromLedger(readaloudLedgerKey(adapter.id));
+      continue;
+    }
+    const path = adapter.memoryPath(adapterDeps(deps));
+    const op = injectReadaloud(path, config.readaloud.openCommand, adapter.id);
+    if (!op.changed) {
+      continue;
+    }
+    if (!interactive) {
+      op.apply();
+      continue;
+    }
+    deps.io.note(
+      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible: re-run \`hollr init\` with read-aloud off, or \`hollr uninstall\`).`,
+    );
+    const seeDiff = await deps.io.confirm({
+      message: "Show exactly what changed?",
+      initialValue: false,
+    });
+    if (seeDiff) {
+      deps.io.note(op.diff, `${adapter.title} — read-aloud instruction`);
+    }
+    const keep = await deps.io.confirm({
+      message: `Keep this for ${adapter.title}?`,
+      initialValue: true,
+    });
+    if (keep) {
+      op.apply();
+    }
+  }
+}
+
 /** Print a summary and offer to preview with `hollr test`. */
 async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
   const lines = [
@@ -352,6 +413,10 @@ async function runInitYes(deps: InitDeps): Promise<InitResult> {
   // Close the legacy global http opt-in: move it onto the http targets that
   // relied on it, then clear the root flag so it can't widen a future target.
   const config = migrateHttpOptIn(loaded).config;
+  if (config.readaloud.openCommand.length === 0) {
+    config.readaloud.openCommand = defaultOpenCommand(deps.platform.id);
+  }
+  await stepInjectInstructions(deps, config, false);
   const configPath = writeGlobalConfig(config);
   return { runTest: false, configPath };
 }
@@ -379,8 +444,14 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
   // clears the legacy root flag.
   const existing = migrateHttpOptIn(loadConfig(process.cwd())).config;
   const activation = await stepActivation(deps.io, existing.activation);
-  const config = await collectSinkConfig(deps.io, deps.enumerateVoices, existing);
+  const config = await collectSinkConfig(
+    deps.io,
+    deps.enumerateVoices,
+    existing,
+    defaultOpenCommand(deps.platform.id),
+  );
   config.activation = activation;
+  await stepInjectInstructions(deps, config, true);
   const configPath = writeGlobalConfig(config);
   const runTest = await stepSummary(deps.io, config);
   return { runTest, configPath };

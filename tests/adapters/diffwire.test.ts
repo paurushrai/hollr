@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   unwireFromLedger,
   wireJsonFile,
+  wireMarkedSection,
   wireTextFile,
 } from "../../src/adapters/diffwire.ts";
 
@@ -181,6 +182,68 @@ describe("unwireFromLedger", () => {
 
   it("should_be_a_no_op_for_an_unknown_ledger_key", () => {
     expect(() => unwireFromLedger("never-wired")).not.toThrow();
+  });
+});
+
+describe("wireMarkedSection", () => {
+  const KEY = "cc:readaloud";
+  const MARKER = "hollr:readaloud";
+
+  it("should_append_a_marked_block_to_an_existing_file", () => {
+    const path = target("CLAUDE.md");
+    writeFileSync(path, "# My rules\n\nBe concise.\n");
+    const op = wireMarkedSection(path, MARKER, "SPEAK NICELY", KEY);
+    expect(op.changed).toBe(true);
+    op.apply();
+    const out = readFileSync(path, "utf8");
+    expect(out).toContain("# My rules");
+    expect(out).toContain("Be concise.");
+    expect(out).toContain(`<!-- ${MARKER}:start`);
+    expect(out).toContain("SPEAK NICELY");
+    expect(out).toContain(`<!-- ${MARKER}:end -->`);
+  });
+
+  it("should_create_the_file_when_absent", () => {
+    const path = target("CLAUDE.md");
+    wireMarkedSection(path, MARKER, "SPEAK NICELY", KEY).apply();
+    expect(readFileSync(path, "utf8")).toContain("SPEAK NICELY");
+  });
+
+  it("should_update_the_block_in_place_and_stay_idempotent", () => {
+    const path = target("CLAUDE.md");
+    writeFileSync(path, "top\n");
+    wireMarkedSection(path, MARKER, "V1", KEY).apply();
+    const second = wireMarkedSection(path, MARKER, "V1", KEY);
+    expect(second.changed).toBe(false); // identical → no-op
+    wireMarkedSection(path, MARKER, "V2", KEY).apply();
+    const out = readFileSync(path, "utf8");
+    expect(out).toContain("V2");
+    expect(out).not.toContain("V1");
+    expect(out.match(/:start/g)?.length).toBe(1); // exactly one block
+    expect(out.startsWith("top")).toBe(true); // user content preserved
+  });
+
+  it("should_surgically_unwire_and_preserve_edits_made_after_injection", () => {
+    const path = target("CLAUDE.md");
+    writeFileSync(path, "original\n");
+    wireMarkedSection(path, MARKER, "BLOCK", KEY).apply();
+    // user edits the file AFTER injection:
+    writeFileSync(path, `${readFileSync(path, "utf8")}\n## New user section\nkeep me\n`);
+    unwireFromLedger(KEY);
+    const out = readFileSync(path, "utf8");
+    expect(out).toContain("original");
+    expect(out).toContain("keep me"); // later edit survives
+    expect(out).not.toContain("BLOCK");
+    expect(out).not.toContain(`${MARKER}:start`);
+  });
+
+  it("should_be_a_noop_unwire_when_markers_already_gone", () => {
+    const path = target("CLAUDE.md");
+    writeFileSync(path, "hand-removed\n");
+    wireMarkedSection(path, MARKER, "BLOCK", KEY).apply();
+    writeFileSync(path, "hand-removed\n"); // user deleted the block manually
+    expect(() => unwireFromLedger(KEY)).not.toThrow();
+    expect(readFileSync(path, "utf8")).toBe("hand-removed\n");
   });
 });
 

@@ -40,6 +40,29 @@ const QUIET_HOURS_RE = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
 /** Injected voice enumeration: real impl spawns + parses; tests return a fixed list. */
 export type EnumerateVoices = () => string[];
 
+/** Ask for the markdown-open command only when read-aloud is the done mode. */
+async function collectOpenCommand(
+  io: InitIo,
+  events: Record<EventName, EventConfig>,
+  existing: HollrConfig,
+  defaultOpen: string,
+): Promise<string> {
+  if (events.done.mode !== "readaloud") {
+    return existing.readaloud.openCommand;
+  }
+  io.note(
+    "Read-aloud keeps responses suitable for listening; code and extra detail " +
+      "open in your markdown viewer instead of being spoken.",
+  );
+  const seed = existing.readaloud.openCommand.length > 0
+    ? existing.readaloud.openCommand
+    : defaultOpen;
+  const raw = (
+    await io.text({ message: "Command to open a markdown file", initialValue: seed })
+  ).trim();
+  return raw.length === 0 ? seed : raw;
+}
+
 /** Ask the mode for every event, seeded from the user's current config. */
 async function collectModes(
   io: InitIo,
@@ -259,9 +282,14 @@ export async function collectSinkConfig(
   io: InitIo,
   enumerate: EnumerateVoices,
   existing: HollrConfig,
+  defaultOpen: string,
 ): Promise<HollrConfig> {
   const config = structuredClone(existing);
   config.events = await collectModes(io, existing);
+  config.readaloud = {
+    ...config.readaloud,
+    openCommand: await collectOpenCommand(io, config.events, existing, defaultOpen),
+  };
   config.voice = await collectVoice(io, enumerate, existing);
   config.notify = { ...config.notify, sound: await collectSound(io, existing) };
   const quiet = await collectQuietHours(io, existing);

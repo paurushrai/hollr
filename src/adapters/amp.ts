@@ -73,7 +73,13 @@ export const amp: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "Sourcegraph Amp — announce-only via amp.notifications + the hollr run wrapper",
-  capabilities: { done: true, blocked: false, readAloud: false, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: false,
+    readAloud: false,
+    slashCommand: false,
+    instructionInjection: false,
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed = deps.which(BINARY) !== null || isDir(configDir(deps));

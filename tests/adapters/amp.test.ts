@@ -56,6 +56,7 @@ describe("amp.capabilities", () => {
       blocked: false,
       readAloud: false,
       slashCommand: false,
+      instructionInjection: false,
     });
   });
 });
@@ -143,5 +144,10 @@ describe("amp.detect", () => {
   it("should_report_not_installed_on_a_bare_home", async () => {
     const detection = await amp.detect(deps(whichNone));
     expect(detection.installed).toBe(false);
+  });
+
+  it("should_not_offer_instruction_injection_yet", () => {
+    expect(amp.capabilities.instructionInjection).toBe(false);
+    expect(amp.memoryPath).toBeUndefined();
   });
 });

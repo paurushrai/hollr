@@ -265,7 +265,17 @@ export const codex: Adapter = {
   id: ID,
   title: TITLE,
   tagline: "OpenAI Codex — notify done/read-aloud and PermissionRequest blocked",
-  capabilities: { done: true, blocked: true, readAloud: true, slashCommand: false },
+  capabilities: {
+    done: true,
+    blocked: true,
+    readAloud: true,
+    slashCommand: false,
+    instructionInjection: true,
+  },
+
+  memoryPath(deps: AdapterDeps): string {
+    return join(deps.home, CONFIG_DIR, "AGENTS.md");
+  },
 
   detect(deps: AdapterDeps): Promise<Detection> {
     const installed =
