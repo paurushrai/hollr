@@ -8,11 +8,13 @@
  * this in a top-level try/catch that forces exit 0.
  */
 
+import { readaloudTempDir } from "../adapters/instruction.ts";
 import { byId } from "../adapters/registry.ts";
 import type { EventName, HollrConfig, WebhookTarget } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
 import type { HollrEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
+import { pruneReadaloudDir } from "../core/prune.ts";
 import { route } from "../core/router.ts";
 import type { Platform } from "../platform/index.ts";
 import type { speakSequenced } from "../platform/sequencer.ts";
@@ -280,5 +282,10 @@ export async function runEmit(args: string[], deps: EmitDeps): Promise<number> {
     new Date(),
   );
   await settleWebhooks(deps.awaitWebhooks());
+  try {
+    pruneReadaloudDir(readaloudTempDir(), new Date());
+  } catch {
+    // Prune is best-effort; never let it affect the emit result.
+  }
   return code;
 }
