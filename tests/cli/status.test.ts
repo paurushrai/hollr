@@ -113,6 +113,18 @@ describe("runStatus report", () => {
     expect(text).not.toContain("e1");
   });
 
+  it("should_list_each_wired_adapter_once_even_with_multiple_ledger_keys", () => {
+    // claude-code owns two ledger keys (settings + command); the report must
+    // still show the adapter a single time, not once per key.
+    writeGlobal({});
+    writeLedger(["claude-code:settings", "claude-code:command"]);
+    const { io, out } = makeIo();
+    runStatus(io);
+    const text = outText(out);
+    const occurrences = text.split("Claude Code").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
   it("should_show_secrets_free_webhook_names_only", () => {
     writeGlobal({
       webhooks: [

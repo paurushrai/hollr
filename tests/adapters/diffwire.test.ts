@@ -98,6 +98,20 @@ describe("wireJsonFile", () => {
     expect(second.diff).toBe("");
   });
 
+  it("should_upsert_by_key_and_keep_the_earliest_before_when_wired_twice", () => {
+    const path = target("config.json");
+    // First wire records the true pre-hollr state (absent → before: null).
+    wireTextFile(path, "hollr-v1\n", "cc-settings").apply();
+    // A later wire of the SAME key must not add a second entry, and must not
+    // overwrite `before` with now-hollr-contaminated content — else unwire
+    // would restore a file that already had hollr in it.
+    wireTextFile(path, "hollr-v2\n", "cc-settings").apply();
+    const ledger = readLedger();
+    const forKey = ledger.filter((entry) => entry.ledgerKey === "cc-settings");
+    expect(forKey).toHaveLength(1);
+    expect(forKey[0]?.before).toBeNull();
+  });
+
   it("should_merge_into_existing_json_preserving_prior_keys", () => {
     const path = target("config.json");
     writeFileSync(path, `${JSON.stringify({ existing: 1 }, null, 2)}\n`);

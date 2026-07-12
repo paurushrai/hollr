@@ -146,8 +146,17 @@ function writeLedger(entries: LedgerEntry[]): void {
   );
 }
 
+/**
+ * Record one reversal entry, keyed by `ledgerKey`. If an entry for the key
+ * already exists it is kept as-is: the earliest capture holds the true
+ * pre-hollr `before`, so preserving it keeps unwire byte-accurate and stops a
+ * re-wire from appending a duplicate key (which `status` would list twice).
+ */
 function appendLedgerEntry(entry: LedgerEntry): void {
   const entries = readLedger();
+  if (entries.some((existing) => existing.ledgerKey === entry.ledgerKey)) {
+    return;
+  }
   entries.push(entry);
   writeLedger(entries);
 }
