@@ -221,27 +221,66 @@ describe("gemini.wire slash command file", () => {
 });
 
 describe("gemini.unwire", () => {
-  it("should_restore_settings_and_delete_the_command_file", async () => {
+  it("should_unwire_only_hollr_gemini_hooks_and_keep_foreign_plus_delete_command", async () => {
+    const testDeps = deps();
+    await gemini.wire(testDeps);
+    const path = join(home, ".gemini", "settings.json");
+    const cfg = JSON.parse(readFileSync(path, "utf8"));
+    cfg.hooks.AfterAgent.push({ hooks: [{ type: "command", command: "user-after" }] });
+    writeFileSync(path, JSON.stringify(cfg, null, 2));
+    await gemini.unwire(testDeps);
+    const out = JSON.parse(readFileSync(path, "utf8"));
+    const cmds = (out.hooks?.AfterAgent ?? []).flatMap((e: { hooks: { command: string }[] }) =>
+      e.hooks.map((h) => h.command),
+    );
+    expect(cmds).toEqual(["user-after"]);
+    expect(existsSync(join(home, ".gemini", "commands", "hollr.toml"))).toBe(false);
+  });
+
+  it("should_preserve_an_unrelated_hook_event_on_unwire", async () => {
     mkdirSync(join(home, ".gemini"), { recursive: true });
     writeFileSync(
       settingsPath(),
-      `${JSON.stringify({ theme: "dark" }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          theme: "dark",
+          hooks: {
+            BeforeTool: [
+              { matcher: "read_.*", hooks: [{ type: "command", command: "audit.sh" }] },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
-    const settingsBefore = readFileSync(settingsPath(), "utf8");
     await gemini.wire(deps());
-    expect(readFileSync(settingsPath(), "utf8")).not.toBe(settingsBefore);
-    expect(existsSync(commandPath())).toBe(true);
     await gemini.unwire(deps());
-    expect(readFileSync(settingsPath(), "utf8")).toBe(settingsBefore);
-    expect(existsSync(commandPath())).toBe(false);
+    const settings = readSettings();
+    expect(settings.theme).toBe("dark");
+    const hooks = settings.hooks as Record<string, unknown>;
+    expect(JSON.stringify(hooks.BeforeTool)).toContain("audit.sh");
+    expect(hooks.AfterAgent).toBeUndefined();
+    expect(hooks.Notification).toBeUndefined();
   });
 
-  it("should_delete_settings_that_did_not_exist_before_wiring", async () => {
+  it("should_leave_an_empty_settings_object_when_wiring_created_the_file", async () => {
+    // unwireJsonFile is surgical: it rewrites the file's CURRENT content and
+    // never tracks "did this file exist before" to delete it. A settings.json
+    // created solely by wire survives unwire as an empty JSON object.
     await gemini.wire(deps());
     expect(existsSync(settingsPath())).toBe(true);
     await gemini.unwire(deps());
-    expect(existsSync(settingsPath())).toBe(false);
+    expect(existsSync(settingsPath())).toBe(true);
+    expect(readSettings()).toEqual({});
+  });
+
+  it("should_delete_the_command_file_on_unwire", async () => {
+    await gemini.wire(deps());
+    expect(existsSync(commandPath())).toBe(true);
+    await gemini.unwire(deps());
+    expect(existsSync(commandPath())).toBe(false);
   });
 });
 
