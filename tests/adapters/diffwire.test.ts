@@ -11,7 +11,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  listWiredKeys,
+  unwireCreatedFile,
   unwireFromLedger,
+  unwireJsonFile,
+  unwireTextFile,
   wireJsonFile,
   wireMarkedSection,
   wireTextFile,
@@ -254,5 +258,89 @@ describe("wired.json ledger round-trip", () => {
     const ledger = readLedger();
     expect(ledger.map((entry) => entry.ledgerKey)).toEqual(["key-a", "key-b"]);
     expect(ledger.every((entry) => typeof entry.at === "string")).toBe(true);
+  });
+});
+
+describe("unwireJsonFile", () => {
+  const KEY = "x:settings";
+  const removeFoo = (j: Record<string, unknown>): Record<string, unknown> => {
+    const { foo: _drop, ...rest } = j;
+    return rest;
+  };
+
+  it("should_surgically_rewrite_current_content_preserving_foreign_keys", () => {
+    const path = target("settings.json");
+    writeFileSync(path, `${JSON.stringify({ foo: "hollr", userHook: 1 }, null, 2)}\n`);
+    wireJsonFile(path, (j) => j, KEY).apply(); // record a ledger entry for KEY
+    // user adds their own key AFTER wiring:
+    writeFileSync(path, `${JSON.stringify({ foo: "hollr", userHook: 1, mine: 2 }, null, 2)}\n`);
+    unwireJsonFile(path, removeFoo, KEY);
+    const out = JSON.parse(readFileSync(path, "utf8"));
+    expect(out).toEqual({ userHook: 1, mine: 2 }); // hollr's `foo` gone, user keys kept
+    expect(listWiredKeys()).not.toContain(KEY);
+  });
+
+  it("should_be_a_noop_when_the_file_is_absent", () => {
+    expect(() => unwireJsonFile(target("nope.json"), removeFoo, KEY)).not.toThrow();
+  });
+
+  it("should_drop_the_ledger_key_even_when_nothing_changes", () => {
+    const path = target("settings.json");
+    writeFileSync(path, `${JSON.stringify({ userHook: 1 }, null, 2)}\n`);
+    wireJsonFile(path, (j) => j, KEY).apply();
+    unwireJsonFile(path, removeFoo, KEY); // no `foo` present
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ userHook: 1 });
+    expect(listWiredKeys()).not.toContain(KEY);
+  });
+});
+
+describe("unwireCreatedFile", () => {
+  it("should_delete_the_file_and_drop_the_key_even_if_edited", () => {
+    const path = target("hollr.md");
+    writeFileSync(path, "hand-edited by user\n");
+    wireTextFile(path, "orig", "x:command").apply();
+    writeFileSync(path, "hand-edited by user\n");
+    unwireCreatedFile(path, "x:command");
+    expect(existsSync(path)).toBe(false);
+    expect(listWiredKeys()).not.toContain("x:command");
+  });
+
+  it("should_be_a_noop_when_the_file_is_already_gone", () => {
+    expect(() => unwireCreatedFile(target("gone.md"), "x:command")).not.toThrow();
+  });
+});
+
+describe("unwireTextFile", () => {
+  const KEY = "x:text";
+
+  it("should_write_the_transformed_content_and_drop_the_key", () => {
+    const path = target("notes.txt");
+    writeFileSync(path, "hollr line\nuser line\n");
+    wireTextFile(path, "hollr line\nuser line\n", KEY).apply();
+    unwireTextFile(
+      path,
+      (current) => (current ?? "").replace("hollr line\n", ""),
+      KEY,
+    );
+    expect(readFileSync(path, "utf8")).toBe("user line\n");
+    expect(listWiredKeys()).not.toContain(KEY);
+  });
+
+  it("should_write_nothing_when_the_transform_returns_the_same_content_but_still_drop_the_key", () => {
+    const path = target("notes.txt");
+    writeFileSync(path, "unchanged\n");
+    wireTextFile(path, "unchanged\n", KEY).apply();
+    const before = statSync(path).mtimeMs;
+    unwireTextFile(path, (current) => current, KEY);
+    expect(readFileSync(path, "utf8")).toBe("unchanged\n");
+    expect(statSync(path).mtimeMs).toBe(before);
+    expect(listWiredKeys()).not.toContain(KEY);
+  });
+
+  it("should_not_write_when_the_original_is_absent_but_still_drop_the_key", () => {
+    const path = target("gone.txt");
+    unwireTextFile(path, (current) => current, KEY);
+    expect(existsSync(path)).toBe(false);
+    expect(listWiredKeys()).not.toContain(KEY);
   });
 });

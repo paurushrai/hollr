@@ -401,3 +401,62 @@ export function unwireFromLedger(ledgerKey: string): void {
   restoreEntry(entry);
   writeLedger(entries.filter((item) => item.ledgerKey !== ledgerKey));
 }
+
+/** Remove the entry for `ledgerKey` from the ledger (no-op if absent). */
+function dropLedgerKey(ledgerKey: string): void {
+  const entries = readLedger();
+  const kept = entries.filter((entry) => entry.ledgerKey !== ledgerKey);
+  if (kept.length !== entries.length) {
+    writeLedger(kept);
+  }
+}
+
+/**
+ * Surgically reverse a JSON wiring: apply `removeMutate` to the file's CURRENT
+ * content (not the ledger `before`), write only if it changed, and drop the
+ * ledger key. A missing/malformed file is a no-op. This never restores a whole
+ * file, so edits made after wiring survive.
+ */
+export function unwireJsonFile(
+  path: string,
+  removeMutate: (json: JsonObject) => JsonObject,
+  ledgerKey: string,
+): void {
+  const original = readFileOrNull(path);
+  if (original !== null) {
+    const next = serializeJson(removeMutate(parseJsonObject(original)));
+    if (next !== original) {
+      writeFileAtomic(path, next);
+    }
+  }
+  dropLedgerKey(ledgerKey);
+}
+
+/** Delete a file hollr created whole, and drop its ledger key. Never throws. */
+export function unwireCreatedFile(path: string, ledgerKey: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // Already gone or unremovable — the desired end state (absent) still holds.
+  }
+  dropLedgerKey(ledgerKey);
+}
+
+/**
+ * Surgically reverse a plaintext wiring: run `transform` against the file's
+ * CURRENT content (`null` when absent), write only when it returns a non-null
+ * result that differs from the current content, and drop the ledger key.
+ * Never throws.
+ */
+export function unwireTextFile(
+  path: string,
+  transform: (current: string | null) => string | null,
+  ledgerKey: string,
+): void {
+  const original = readFileOrNull(path);
+  const next = transform(original);
+  if (next !== null && next !== original) {
+    writeFileAtomic(path, next);
+  }
+  dropLedgerKey(ledgerKey);
+}
