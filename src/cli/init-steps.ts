@@ -18,7 +18,13 @@ import { join } from "node:path";
 import { listWiredKeys } from "../adapters/diffwire.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
 import type { Activation, HollrConfig } from "../core/config.ts";
-import { DEFAULTS, hollrHome, isConfigured, loadConfig } from "../core/config.ts";
+import {
+  DEFAULTS,
+  hollrHome,
+  isConfigured,
+  loadConfig,
+  migrateHttpOptIn,
+} from "../core/config.ts";
 import { allRequiredOk, checkAll, type Check } from "../core/doctor.ts";
 import type { Platform } from "../platform/index.ts";
 import { hardenConfig } from "../sinks/webhook.ts";
@@ -342,7 +348,10 @@ async function runInitYes(deps: InitDeps): Promise<InitResult> {
     }
   }
   const cwd = process.cwd();
-  const config = isConfigured(cwd) ? loadConfig(cwd) : structuredClone(DEFAULTS);
+  const loaded = isConfigured(cwd) ? loadConfig(cwd) : structuredClone(DEFAULTS);
+  // Close the legacy global http opt-in: move it onto the http targets that
+  // relied on it, then clear the root flag so it can't widen a future target.
+  const config = migrateHttpOptIn(loaded).config;
   const configPath = writeGlobalConfig(config);
   return { runTest: false, configPath };
 }
@@ -365,8 +374,10 @@ export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitRe
   await stepAgents(deps);
   // Loaded after migrate/agent wiring so a just-migrated config seeds the
   // prompts; loadConfig returns DEFAULTS when nothing exists, so this is the
-  // universal base and never destroys the user's current sinks.
-  const existing = loadConfig(process.cwd());
+  // universal base and never destroys the user's current sinks. The http
+  // opt-in migration runs here so a re-init persists per-target flags and
+  // clears the legacy root flag.
+  const existing = migrateHttpOptIn(loadConfig(process.cwd())).config;
   const activation = await stepActivation(deps.io, existing.activation);
   const config = await collectSinkConfig(deps.io, deps.enumerateVoices, existing);
   config.activation = activation;
