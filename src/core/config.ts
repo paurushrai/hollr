@@ -366,3 +366,41 @@ export function migrateV1(): boolean {
   }
   return true;
 }
+
+const HTTP_SCHEME = "http:";
+
+/** URL scheme (e.g. `http:`), or `null` when the string is not a parseable URL. */
+function urlScheme(url: string): string | null {
+  try {
+    return new URL(url).protocol;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Migrate a legacy global http opt-in to per-target flags. When `allowHttp` is
+ * true at the root, every `http://` target that has no explicit flag inherits
+ * `allowHttp: true` (preserving exactly what the global flag permitted), then
+ * the root flag is cleared so it can never widen a future target. An explicit
+ * per-target flag (true or false) is respected. Idempotent and pure: a config
+ * whose root flag is already `false` is returned by reference, unchanged.
+ */
+export function migrateHttpOptIn(config: HollrConfig): {
+  config: HollrConfig;
+  changed: boolean;
+} {
+  if (config.allowHttp !== true) {
+    return { config, changed: false };
+  }
+  const next = structuredClone(config);
+  next.allowHttp = false;
+  if (Array.isArray(next.webhooks)) {
+    for (const target of next.webhooks) {
+      if (target.allowHttp === undefined && urlScheme(target.url) === HTTP_SCHEME) {
+        target.allowHttp = true;
+      }
+    }
+  }
+  return { config: next, changed: true };
+}

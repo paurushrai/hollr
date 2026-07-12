@@ -17,10 +17,12 @@ import {
   isProjectEnabled,
   isMuted,
   loadConfig,
+  migrateHttpOptIn,
   migrateV1,
   quietActive,
   quietUntilPath,
 } from "../../src/core/config.ts";
+import type { HollrConfig, WebhookTarget } from "../../src/core/config.ts";
 
 const PROJECT = "/some/project";
 
@@ -187,6 +189,58 @@ describe("inQuietHours", () => {
     expect(inQuietHours("garbage", at("12:00"))).toBe(false);
     expect(inQuietHours("25:00-99:99", at("12:00"))).toBe(false);
     expect(inQuietHours("", at("12:00"))).toBe(false);
+  });
+});
+
+describe("migrateHttpOptIn", () => {
+  function configWith(
+    allowHttp: boolean,
+    webhooks: WebhookTarget[],
+  ): HollrConfig {
+    return { ...structuredClone(DEFAULTS), allowHttp, webhooks };
+  }
+
+  function target(url: string, allowHttp?: boolean): WebhookTarget {
+    const t: WebhookTarget = { name: url, provider: "generic", url, events: ["done"] };
+    if (allowHttp !== undefined) {
+      t.allowHttp = allowHttp;
+    }
+    return t;
+  }
+
+  it("should_move_root_flag_onto_http_targets_and_clear_root", () => {
+    const { config, changed } = migrateHttpOptIn(
+      configWith(true, [target("http://a.example"), target("https://b.example")]),
+    );
+    expect(changed).toBe(true);
+    expect(config.allowHttp).toBe(false);
+    expect(config.webhooks[0]?.allowHttp).toBe(true); // http gets the opt-in
+    expect(config.webhooks[1]?.allowHttp).toBeUndefined(); // https never needed it
+  });
+
+  it("should_leave_an_explicit_per_target_flag_untouched", () => {
+    const { config } = migrateHttpOptIn(
+      configWith(true, [target("http://a.example", false)]),
+    );
+    // Explicit false means the user declined this target; migration must respect it.
+    expect(config.webhooks[0]?.allowHttp).toBe(false);
+    expect(config.allowHttp).toBe(false);
+  });
+
+  it("should_be_a_no_op_when_root_flag_is_already_false", () => {
+    const input = configWith(false, [target("http://a.example")]);
+    const { config, changed } = migrateHttpOptIn(input);
+    expect(changed).toBe(false);
+    expect(config).toBe(input); // unchanged, same reference
+  });
+
+  it("should_be_idempotent", () => {
+    const first = migrateHttpOptIn(
+      configWith(true, [target("http://a.example")]),
+    );
+    const second = migrateHttpOptIn(first.config);
+    expect(second.changed).toBe(false);
+    expect(second.config.webhooks[0]?.allowHttp).toBe(true);
   });
 });
 

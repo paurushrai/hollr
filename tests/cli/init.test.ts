@@ -438,6 +438,25 @@ describe("runInit", () => {
     expect(config.quietHoursWebhooks).toBe("suppress");
   });
 
+  it("should_migrate_legacy_global_allowHttp_onto_http_targets_on_yes", async () => {
+    writeExistingConfig({
+      ...configuredConfig(),
+      allowHttp: true,
+      webhooks: [
+        { name: "local", provider: "generic", url: "http://localhost:8080", events: ["done"] },
+        { name: "prod", provider: "generic", url: "https://hooks.example", events: ["done"] },
+      ],
+    });
+    const adapter = makeAdapter({ id: "a1", installed: true }, { wire: vi.fn(), unwire: vi.fn() });
+
+    await runInit(baseDeps(new ScriptIo(), [adapter]), { yes: true });
+
+    const config = readWrittenConfig();
+    expect(config.allowHttp).toBe(false); // legacy root flag cleared
+    expect(config.webhooks[0]?.allowHttp).toBe(true); // http target keeps working
+    expect(config.webhooks[1]?.allowHttp).toBeUndefined(); // https untouched
+  });
+
   it("should_preserve_existing_webhooks_and_unprompted_settings_on_interactive_re_run", async () => {
     writeExistingConfig({ ...configuredConfig(), voice: { name: null, rateWpm: 240 } });
     const adapter = makeAdapter({ id: "a1", installed: false }, { wire: vi.fn(), unwire: vi.fn() });
