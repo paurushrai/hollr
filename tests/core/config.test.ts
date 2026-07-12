@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   DEFAULTS,
+  defaultOpenCommand,
   encodeCwd,
   hollrHome,
   inQuietHours,
@@ -140,6 +141,18 @@ describe("loadConfig", () => {
   it("should_not_throw_on_bad_typed_values", () => {
     writeGlobal({ events: "loud", voice: { rateWpm: "fast" } });
     expect(() => loadConfig(PROJECT)).not.toThrow();
+  });
+
+  it("should_default_openCommand_to_empty", () => {
+    expect(loadConfig(PROJECT).readaloud.openCommand).toBe("");
+  });
+});
+
+describe("defaultOpenCommand", () => {
+  it("should_map_platform_to_the_os_opener", () => {
+    expect(defaultOpenCommand("darwin")).toBe("open");
+    expect(defaultOpenCommand("win32")).toBe("start");
+    expect(defaultOpenCommand("linux")).toBe("xdg-open");
   });
 });
 

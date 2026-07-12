@@ -39,6 +39,8 @@ export interface NotifyConfig {
 export interface ReadaloudConfig {
   maxChars: number;
   stripCode: boolean;
+  /** Command that opens a markdown file (e.g. `open`); "" until set at init. */
+  openCommand: string;
 }
 
 export interface WebhookTarget {
@@ -85,7 +87,7 @@ export const DEFAULTS: HollrConfig = {
   },
   voice: { name: null, rateWpm: DEFAULT_RATE_WPM },
   notify: { desktop: true, sound: null },
-  readaloud: { maxChars: DEFAULT_MAX_CHARS, stripCode: true },
+  readaloud: { maxChars: DEFAULT_MAX_CHARS, stripCode: true, openCommand: "" },
   quietHours: null,
   quietHoursWebhooks: "fire",
   webhooks: [],
@@ -120,6 +122,17 @@ export function hollrHome(): string {
 /** Match Claude Code's project-dir encoding: non-alphanumerics become '-'. */
 export function encodeCwd(cwd: string): string {
   return cwd.replace(NON_ALNUM, "-");
+}
+
+/** The OS default command to open a markdown file. */
+export function defaultOpenCommand(platformId: NodeJS.Platform = process.platform): string {
+  if (platformId === "darwin") {
+    return "open";
+  }
+  if (platformId === "win32") {
+    return "start";
+  }
+  return "xdg-open";
 }
 
 function globalConfigPath(): string {
