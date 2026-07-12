@@ -66,8 +66,32 @@ const TEXT_TYPE = "text";
 
 /** The `blocked` event; the only path the notification-type filter applies to. */
 const BLOCKED_EVENT: EventName = "blocked";
+/** The `done` event; the only path the background-work filter applies to. */
+const DONE_EVENT: EventName = "done";
 /** Payload key Claude Code stamps on every Notification hook call. */
 const NOTIFICATION_TYPE_KEY = "notification_type";
+
+/**
+ * `Stop` hook payload key (Claude Code >= 2.1.145) listing in-flight background
+ * tasks so a hook can tell "session done" from "paused, waiting on background
+ * work". Each entry has a `type`. Absent on older Claude Code → we never filter.
+ */
+const BACKGROUND_TASKS_KEY = "background_tasks";
+const TASK_TYPE_KEY = "type";
+
+/**
+ * Background-task types that mean the turn is NOT really finished — the agent
+ * delegated work and is waiting on it, so a `done` announce would be premature.
+ * A long-lived `shell` (watcher / dev-server) or `monitor` can run the whole
+ * session, so they are deliberately EXCLUDED: counting them would silence every
+ * announce. Only actively-delegated work blocks the `done` alert.
+ */
+const BLOCKING_BACKGROUND_TYPES: ReadonlySet<string> = new Set([
+  "subagent",
+  "workflow",
+  "teammate",
+  "cloud session",
+]);
 
 /**
  * Notification types that carry no actionable "needs your input" signal, so
@@ -352,6 +376,29 @@ function isSuppressedNotification(raw: JsonObject, eventHint: EventName): boolea
   return typeof type === "string" && SUPPRESSED_NOTIFICATION_TYPES.has(type);
 }
 
+/**
+ * True when a `done` Stop payload still lists in-flight delegated work, so the
+ * announce should be held until the truly-final Stop (when `background_tasks`
+ * no longer has a blocking-type entry). Scoped to the `done` path; an absent or
+ * malformed array (older Claude Code) is never treated as pending, so those
+ * users keep today's behaviour.
+ */
+function hasPendingDelegatedWork(raw: JsonObject, eventHint: EventName): boolean {
+  if (eventHint !== DONE_EVENT) {
+    return false;
+  }
+  const tasks = raw[BACKGROUND_TASKS_KEY];
+  if (!Array.isArray(tasks)) {
+    return false;
+  }
+  return tasks.some(
+    (task) =>
+      isRecord(task) &&
+      typeof task[TASK_TYPE_KEY] === "string" &&
+      BLOCKING_BACKGROUND_TYPES.has(task[TASK_TYPE_KEY]),
+  );
+}
+
 // --- adapter ----------------------------------------------------------------
 
 export const claudeCode: Adapter = {
@@ -404,6 +451,9 @@ export const claudeCode: Adapter = {
       return null;
     }
     if (isSuppressedNotification(raw, eventHint)) {
+      return null;
+    }
+    if (hasPendingDelegatedWork(raw, eventHint)) {
       return null;
     }
     const cwd = typeof raw.cwd === "string" ? raw.cwd : "";

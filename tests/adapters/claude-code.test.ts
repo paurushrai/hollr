@@ -175,6 +175,55 @@ describe("claudeCode.normalize", () => {
     expect(event?.event).toBe("done");
   });
 
+  it("should_suppress_done_while_a_background_subagent_is_pending", () => {
+    // Intermediate Stop: main agent yielded while a delegated agent still runs.
+    const event = claudeCode.normalize(
+      { cwd: "/x", background_tasks: [{ type: "subagent", status: "running" }] },
+      "done",
+    );
+    expect(event).toBeNull();
+  });
+
+  it("should_suppress_done_when_any_task_is_a_blocking_type", () => {
+    for (const type of ["subagent", "workflow", "teammate", "cloud session"]) {
+      const event = claudeCode.normalize(
+        { background_tasks: [{ type: "shell" }, { type }] },
+        "done",
+      );
+      expect(event, `${type} should block`).toBeNull();
+    }
+  });
+
+  it("should_announce_done_when_only_shell_or_monitor_tasks_are_running", () => {
+    // A watcher / dev-server (shell) or monitor can run all session; it must not
+    // silence the announce.
+    const event = claudeCode.normalize(
+      { cwd: "/x", background_tasks: [{ type: "shell" }, { type: "monitor" }] },
+      "done",
+    );
+    expect(event?.event).toBe("done");
+  });
+
+  it("should_announce_done_when_background_tasks_is_empty_the_final_turn", () => {
+    const event = claudeCode.normalize({ cwd: "/x", background_tasks: [] }, "done");
+    expect(event?.event).toBe("done");
+  });
+
+  it("should_announce_done_when_background_tasks_is_absent_older_claude_code", () => {
+    // Fail-open: pre-2.1.145 payloads omit the field; behaviour is unchanged.
+    const event = claudeCode.normalize({ cwd: "/x" }, "done");
+    expect(event?.event).toBe("done");
+  });
+
+  it("should_not_apply_the_background_filter_to_the_blocked_path", () => {
+    // needs-input is a separate signal the user wants mid-session.
+    const event = claudeCode.normalize(
+      { message: "Claude needs input", background_tasks: [{ type: "subagent" }] },
+      "blocked",
+    );
+    expect(event?.event).toBe("blocked");
+  });
+
   it("should_return_null_when_raw_is_not_an_object", () => {
     expect(claudeCode.normalize("nope", "done")).toBeNull();
     expect(claudeCode.normalize(null, "done")).toBeNull();
