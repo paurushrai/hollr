@@ -1,6 +1,6 @@
 /**
- * Best-effort age-prune of the read-aloud temp directory. The instruction hollr
- * injects tells the model to write temp .md files here; hollr never creates
+ * Best-effort age-prune of the read-aloud temp directory. The instruction kelbrin
+ * injects tells the model to write temp .md files here; kelbrin never creates
  * them, so this sweep is the only cleanup. Runs in the emit path (every turn)
  * and must never throw — a hook must not break the agent turn.
  */

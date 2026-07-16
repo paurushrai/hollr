@@ -1,6 +1,6 @@
 /**
- * `hollr run [--announce-stream cursor] -- <cmd> [args...]`: the universal
- * wrapper. It spawns ANY agent command and, when the child exits, emits a hollr
+ * `kelbrin run [--announce-stream cursor] -- <cmd> [args...]`: the universal
+ * wrapper. It spawns ANY agent command and, when the child exits, emits a kelbrin
  * event as the `wrapper` pseudo-agent (done on exit 0, error otherwise). This is
  * the documented read-aloud/blocked path for agents whose native hooks cannot
  * deliver it (e.g. Cursor, Amp).
@@ -22,7 +22,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { EventName, WebhookTarget } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { route } from "../core/router.ts";
 import type { Platform } from "../platform/index.ts";
@@ -59,7 +59,7 @@ const SPAWN_FAILED = 127;
 const SIGNAL_EXIT_CODE = 1;
 
 const RUN_USAGE =
-  "usage: hollr run [--announce-stream cursor] -- <cmd> [args...]";
+  "usage: kelbrin run [--announce-stream cursor] -- <cmd> [args...]";
 
 /** How the child's stdio is wired: fully inherited, or stdout piped for parsing. */
 export type StdioMode = "inherit" | "stream";
@@ -90,7 +90,7 @@ export interface WrapperDeps {
   platform: Platform;
   speak: typeof speakSequenced;
   notify(argv: string[]): void;
-  webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
+  webhooks(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean): void;
   awaitWebhooks(): Promise<void>;
   /**
    * Resolve after `ms` — the injectable stream-drain grace timer. Injected so
@@ -248,7 +248,7 @@ function buildWrapperEvent(
   command: string,
   exitCode: number,
   lastResponse: string | null,
-): HollrEvent {
+): KelbrinEvent {
   const now = deps.now();
   return {
     v: 1,
@@ -263,8 +263,8 @@ function buildWrapperEvent(
   };
 }
 
-/** Route the event through the same path as `hollr emit`, then drain webhooks. */
-async function emitEvent(deps: WrapperDeps, event: HollrEvent): Promise<void> {
+/** Route the event through the same path as `kelbrin emit`, then drain webhooks. */
+async function emitEvent(deps: WrapperDeps, event: KelbrinEvent): Promise<void> {
   const cfg = loadConfig(event.cwd);
   hardenConfig(cfg.webhooks);
   route(
@@ -348,14 +348,14 @@ function awaitChild(
 }
 
 /**
- * Run `hollr run`: parse argv, spawn the child (verbatim, no shell), and on exit
+ * Run `kelbrin run`: parse argv, spawn the child (verbatim, no shell), and on exit
  * emit a wrapper event. Returns the child's exit code (or a usage code when the
  * required `--` / a valid stream format is missing).
  */
 export function runWrapper(args: string[], deps: WrapperDeps): Promise<number> {
   const parsed = parseRunArgs(args);
   if ("error" in parsed) {
-    process.stderr.write(`hollr run: ${parsed.error}\n${RUN_USAGE}\n`);
+    process.stderr.write(`kelbrin run: ${parsed.error}\n${RUN_USAGE}\n`);
     return Promise.resolve(EXIT_USAGE);
   }
   const mode: StdioMode = parsed.streamCursor ? "stream" : "inherit";

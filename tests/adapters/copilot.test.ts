@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { copilot } from "../../src/adapters/copilot.ts";
@@ -23,15 +23,15 @@ const NOTIFICATION_PAYLOAD = JSON.parse(
 ) as Record<string, unknown>;
 const EVENTS_FIXTURE = join(FIXTURES, "events.jsonl");
 
-const DONE_COMMAND = "hollr emit --agent copilot --event done --payload-stdin";
+const DONE_COMMAND = "kelbrin emit --agent copilot --event done --payload-stdin";
 const BLOCKED_COMMAND =
-  "hollr emit --agent copilot --event blocked --payload-stdin";
+  "kelbrin emit --agent copilot --event blocked --payload-stdin";
 const LEDGER_KEY = "copilot:hooks";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 const whichNone = (): string | null => null;
 const whichCopilot = (bin: string): string | null =>
@@ -42,7 +42,7 @@ function deps(which: (bin: string) => string | null = whichNone): AdapterDeps {
 }
 
 function hooksPath(): string {
-  return join(home, ".copilot", "hooks", "hollr.json");
+  return join(home, ".copilot", "hooks", "kelbrin.json");
 }
 
 function writeHooks(json: unknown): void {
@@ -58,19 +58,19 @@ function readHooks(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-copilot-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-copilot-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -241,7 +241,7 @@ describe("copilot.wire", () => {
 });
 
 describe("copilot.unwire", () => {
-  it("should_unwire_only_hollr_hooks_and_keep_a_foreign_entry", async () => {
+  it("should_unwire_only_kelbrin_hooks_and_keep_a_foreign_entry", async () => {
     const testDeps = deps();
     await copilot.wire(testDeps);
     const cfg = readHooks();
@@ -284,6 +284,27 @@ describe("copilot.unwire", () => {
 
   afterEach(() => {
     unwireFromLedger(LEDGER_KEY);
+  });
+});
+
+describe("copilot hollr→kelbrin rename compat", () => {
+  function legacyHooksFilePath(): string {
+    return join(dirname(hooksPath()), "hollr.json");
+  }
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+  });
+
+  it("should_delete_the_legacy_hollr_hooks_file_on_unwire", async () => {
+    mkdirSync(dirname(legacyHooksFilePath()), { recursive: true });
+    writeFileSync(
+      legacyHooksFilePath(),
+      `${JSON.stringify({ version: 1, hooks: {} }, null, 2)}\n`,
+      "utf8",
+    );
+    await copilot.unwire(deps());
+    expect(existsSync(legacyHooksFilePath())).toBe(false);
   });
 });
 

@@ -2,7 +2,7 @@
  * Diff-transparent file wiring with a reversal ledger. Adapters mutate an
  * agent's own config through these two writers so every change is (a) previewed
  * as a diff before it lands and (b) fully reversible: each `apply()` writes the
- * file atomically and records the pre-existing content in `<HOLLR_HOME>/wired.json`,
+ * file atomically and records the pre-existing content in `<KELBRIN_HOME>/wired.json`,
  * so {@link unwireFromLedger} can restore it byte-for-byte — or delete a file
  * that did not exist before.
  *
@@ -20,7 +20,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { hollrHome } from "../core/config.ts";
+import { kelbrinHome } from "../core/config.ts";
 
 /** A prepared, previewable write. Nothing touches disk until `apply()`. */
 export interface WireOp {
@@ -76,7 +76,7 @@ function parseJsonObject(raw: string): JsonObject {
   }
 }
 
-/** Canonical serialization used for every JSON file hollr writes. */
+/** Canonical serialization used for every JSON file kelbrin writes. */
 function serializeJson(value: JsonObject): string {
   return `${JSON.stringify(value, null, JSON_INDENT)}${TRAILING_NEWLINE}`;
 }
@@ -104,7 +104,7 @@ function writeFileAtomic(path: string, content: string, mode?: number): void {
 }
 
 function ledgerPath(): string {
-  return join(hollrHome(), LEDGER_FILE);
+  return join(kelbrinHome(), LEDGER_FILE);
 }
 
 function isLedgerEntry(value: unknown): value is LedgerEntry {
@@ -140,14 +140,14 @@ function readLedger(): LedgerEntry[] {
 
 /**
  * The ledger keys of every currently-wired change, for read-only callers like
- * `hollr status`. Defensive: a missing or malformed ledger yields `[]`.
+ * `kelbrin status`. Defensive: a missing or malformed ledger yields `[]`.
  */
 export function listWiredKeys(): string[] {
   return readLedger().map((entry) => entry.ledgerKey);
 }
 
 function writeLedger(entries: LedgerEntry[]): void {
-  mkdirSync(hollrHome(), { recursive: true });
+  mkdirSync(kelbrinHome(), { recursive: true });
   writeFileAtomic(
     ledgerPath(),
     `${JSON.stringify(entries, null, JSON_INDENT)}${TRAILING_NEWLINE}`,
@@ -157,13 +157,26 @@ function writeLedger(entries: LedgerEntry[]): void {
 
 /**
  * Record one reversal entry, keyed by `ledgerKey`. If an entry for the key
- * already exists it is kept as-is: the earliest capture holds the true
- * pre-hollr `before`, so preserving it keeps unwire byte-accurate and stops a
- * re-wire from appending a duplicate key (which `status` would list twice).
+ * already exists at the SAME path/marker it is kept as-is: the earliest capture
+ * holds the true pre-kelbrin `before`, so preserving it keeps unwire
+ * byte-accurate and stops a re-wire from appending a duplicate key (which
+ * `status` would list twice). If the key's artifact moved — the hollr→kelbrin
+ * rename moved managed files (`hollr.md` → `kelbrin.md`) and marker ids — the
+ * stale artifact is reversed on the spot so it does not linger, and the entry
+ * is replaced to track the new one.
  */
 function appendLedgerEntry(entry: LedgerEntry): void {
   const entries = readLedger();
-  if (entries.some((existing) => existing.ledgerKey === entry.ledgerKey)) {
+  const existing = entries.find((item) => item.ledgerKey === entry.ledgerKey);
+  if (existing !== undefined) {
+    if (existing.path === entry.path && existing.markerId === entry.markerId) {
+      return;
+    }
+    restoreEntry(existing);
+    writeLedger([
+      ...entries.filter((item) => item.ledgerKey !== entry.ledgerKey),
+      entry,
+    ]);
     return;
   }
   entries.push(entry);
@@ -275,7 +288,7 @@ export function wireTextFile(
 }
 
 function startMarker(markerId: string): string {
-  return `<!-- ${markerId}:start (managed by hollr — \`hollr uninstall\`, or re-run \`hollr init\` with read-aloud off, removes this) -->`;
+  return `<!-- ${markerId}:start (managed by kelbrin — \`kelbrin uninstall\`, or re-run \`kelbrin init\` with read-aloud off, removes this) -->`;
 }
 
 function endMarker(markerId: string): string {
@@ -292,8 +305,17 @@ function markedBlock(markerId: string, body: string): string {
  * collapsing the blank line that preceded it. Returns `content` unchanged when
  * the markers are not both present.
  */
+/**
+ * Prefix identifying a block's start line regardless of the management wording
+ * after it — that wording changed across the hollr→kelbrin rename, so matching
+ * the full {@link startMarker} string would miss blocks written by old versions.
+ */
+function startMarkerPrefix(markerId: string): string {
+  return `<!-- ${markerId}:start`;
+}
+
 function stripMarkedSection(content: string, markerId: string): string {
-  const start = content.indexOf(startMarker(markerId));
+  const start = content.indexOf(startMarkerPrefix(markerId));
   if (start === -1) {
     return content;
   }
@@ -315,7 +337,7 @@ function stripMarkedSection(content: string, markerId: string): string {
  */
 function upsertMarkedSection(content: string, markerId: string, body: string): string {
   const block = markedBlock(markerId, body);
-  const start = content.indexOf(startMarker(markerId));
+  const start = content.indexOf(startMarkerPrefix(markerId));
   if (start !== -1) {
     const stripped = stripMarkedSection(content, markerId);
     const base = stripped.length === 0 || stripped.endsWith("\n") ? stripped : `${stripped}\n`;
@@ -339,9 +361,14 @@ export function wireMarkedSection(
   markerId: string,
   blockBody: string,
   ledgerKey: string,
+  legacyMarkerIds: readonly string[] = [],
 ): WireOp {
   const original = readFileOrNull(path);
-  const nextContent = upsertMarkedSection(original ?? "", markerId, blockBody);
+  const base = legacyMarkerIds.reduce(
+    (text, legacyId) => stripMarkedSection(text, legacyId),
+    original ?? "",
+  );
+  const nextContent = upsertMarkedSection(base, markerId, blockBody);
   const oldContent = original ?? "";
   const changed = oldContent !== nextContent;
   return {
@@ -432,7 +459,7 @@ export function unwireJsonFile(
   dropLedgerKey(ledgerKey);
 }
 
-/** Delete a file hollr created whole, and drop its ledger key. Never throws. */
+/** Delete a file kelbrin created whole, and drop its ledger key. Never throws. */
 export function unwireCreatedFile(path: string, ledgerKey: string): void {
   try {
     rmSync(path, { force: true });

@@ -1,5 +1,5 @@
 /**
- * hollr configuration (schema v2): defaults, global + per-project merge, mute,
+ * kelbrin configuration (schema v2): defaults, global + per-project merge, mute,
  * quiet hours, and one-time migration from the v1 (Python) config.
  *
  * All loads are defensive — a missing or malformed file contributes nothing and
@@ -7,9 +7,11 @@
  */
 
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -56,7 +58,7 @@ export interface WebhookTarget {
   allowHttp?: boolean;
 }
 
-export interface HollrConfig {
+export interface KelbrinConfig {
   version: number;
   activation: Activation;
   events: Record<EventName, EventConfig>;
@@ -77,7 +79,7 @@ const SCHEMA_VERSION = 2;
 const DEFAULT_RATE_WPM = 190;
 const DEFAULT_MAX_CHARS = 1200;
 
-export const DEFAULTS: HollrConfig = {
+export const DEFAULTS: KelbrinConfig = {
   version: SCHEMA_VERSION,
   activation: "all",
   events: {
@@ -110,13 +112,37 @@ const QUIET_UNTIL_FILE = "quiet-until";
 const QUIET_INDEFINITE = "indefinite";
 const INTEGER_RE = /^-?\d+$/;
 
-/** `$HOLLR_HOME` if set, else `~/.config/hollr`. */
-export function hollrHome(): string {
-  const override = process.env.HOLLR_HOME;
+/** `$KELBRIN_HOME` if set, else legacy `$HOLLR_HOME`, else `~/.config/kelbrin`. */
+export function kelbrinHome(): string {
+  const override = process.env.KELBRIN_HOME ?? process.env.HOLLR_HOME;
   if (override !== undefined && override.length > 0) {
     return override;
   }
-  return join(homedir(), ".config", "hollr");
+  return join(homedir(), ".config", "kelbrin");
+}
+
+/**
+ * One-time `~/.config/hollr` → `~/.config/kelbrin` rename (the product was
+ * renamed). No-op when an env override is set (the user pinned a location),
+ * when the new home already exists, or when there is no legacy dir. A rename
+ * failure is swallowed: the CLI then simply starts with a fresh home rather
+ * than crashing every command.
+ */
+export function migrateLegacyHome(): void {
+  const override = process.env.KELBRIN_HOME ?? process.env.HOLLR_HOME;
+  if (override !== undefined && override.length > 0) {
+    return;
+  }
+  const legacy = join(homedir(), ".config", "hollr");
+  const current = join(homedir(), ".config", "kelbrin");
+  if (!existsSync(legacy) || existsSync(current)) {
+    return;
+  }
+  try {
+    renameSync(legacy, current);
+  } catch {
+    // Cross-device or permission failure — fall through to a fresh home.
+  }
 }
 
 /** Match Claude Code's project-dir encoding: non-alphanumerics become '-'. */
@@ -136,15 +162,15 @@ export function defaultOpenCommand(platformId: NodeJS.Platform = process.platfor
 }
 
 function globalConfigPath(): string {
-  return join(hollrHome(), "config.json");
+  return join(kelbrinHome(), "config.json");
 }
 
 function projectConfigPath(cwd: string): string {
-  return join(hollrHome(), "projects", `${encodeCwd(cwd)}.json`);
+  return join(kelbrinHome(), "projects", `${encodeCwd(cwd)}.json`);
 }
 
 function muteFlagPath(cwd: string): string {
-  return join(hollrHome(), "projects", `${encodeCwd(cwd)}.muted`);
+  return join(kelbrinHome(), "projects", `${encodeCwd(cwd)}.muted`);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -193,11 +219,11 @@ function mergeConfig(
  * Effective config for `cwd`: DEFAULTS ← global ← project. Never throws;
  * malformed or bad-typed inputs degrade to the merged defaults.
  */
-export function loadConfig(cwd: string): HollrConfig {
+export function loadConfig(cwd: string): KelbrinConfig {
   const base = structuredClone(DEFAULTS) as unknown as Record<string, unknown>;
   const withGlobal = mergeConfig(base, readJsonObject(globalConfigPath()));
   const merged = mergeConfig(withGlobal, readJsonObject(projectConfigPath(cwd)));
-  return merged as unknown as HollrConfig;
+  return merged as unknown as KelbrinConfig;
 }
 
 /** Setup has run if the global config OR this project's override exists. */
@@ -210,7 +236,7 @@ export function isMuted(cwd: string): boolean {
 }
 
 function projectEnabledFlagPath(cwd: string): string {
-  return join(hollrHome(), "projects", `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
+  return join(kelbrinHome(), "projects", `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
 }
 
 /** True when this project has an explicit on-marker (overrides opt-in default). */
@@ -220,7 +246,7 @@ export function isProjectEnabled(cwd: string): boolean {
 
 /** Path to the global temporary-quiet marker (transient state, not config). */
 export function quietUntilPath(): string {
-  return join(hollrHome(), QUIET_UNTIL_FILE);
+  return join(kelbrinHome(), QUIET_UNTIL_FILE);
 }
 
 /**
@@ -281,17 +307,17 @@ export function inQuietHours(spec: string | null, now: Date): boolean {
 const V1_CONFIG_RELATIVE = [".claude", "hollr", "config.json"] as const;
 
 /**
- * True if hollr v2 is already configured: any existing global config OR any
+ * True if kelbrin v2 is already configured: any existing global config OR any
  * project override file under `projects/` counts, since a project override
  * implies setup has run — so we skip v1 migration. That directory is
- * hollr-owned, so any stray `*.json` is treated as our own and suppresses it.
+ * kelbrin-owned, so any stray `*.json` is treated as our own and suppresses it.
  */
 function v2ConfigExists(): boolean {
   if (isFile(globalConfigPath())) {
     return true;
   }
   try {
-    return readdirSync(join(hollrHome(), "projects")).some((entry) =>
+    return readdirSync(join(kelbrinHome(), "projects")).some((entry) =>
       entry.endsWith(".json"),
     );
   } catch {
@@ -309,7 +335,7 @@ function isMode(value: unknown): value is Mode {
 }
 
 function applyEventMode(
-  config: HollrConfig,
+  config: KelbrinConfig,
   target: EventName,
   source: unknown,
 ): void {
@@ -319,7 +345,7 @@ function applyEventMode(
 }
 
 /** Build a v2 config from a v1 (Python) config object, mapping renamed keys. */
-function buildV2FromV1(v1: Record<string, unknown>): HollrConfig {
+function buildV2FromV1(v1: Record<string, unknown>): KelbrinConfig {
   const config = structuredClone(DEFAULTS);
   const voice = v1.voice;
   if (isPlainObject(voice)) {
@@ -364,7 +390,7 @@ export function migrateV1(): boolean {
   if (Object.keys(v1).length === 0) {
     return false;
   }
-  const home = hollrHome();
+  const home = kelbrinHome();
   try {
     mkdirSync(home, { recursive: true });
     writeFileSync(
@@ -399,8 +425,8 @@ function urlScheme(url: string): string | null {
  * per-target flag (true or false) is respected. Idempotent and pure: a config
  * whose root flag is already `false` is returned by reference, unchanged.
  */
-export function migrateHttpOptIn(config: HollrConfig): {
-  config: HollrConfig;
+export function migrateHttpOptIn(config: KelbrinConfig): {
+  config: KelbrinConfig;
   changed: boolean;
 } {
   if (config.allowHttp !== true) {

@@ -24,16 +24,16 @@ const NOTIFICATION_PAYLOAD = JSON.parse(
 const TRANSCRIPT_FIXTURE = join(FIXTURES, "transcript.jsonl");
 
 const STOP_COMMAND =
-  "hollr emit --agent claude-code --event done --payload-stdin";
+  "kelbrin emit --agent claude-code --event done --payload-stdin";
 const NOTIFICATION_COMMAND =
-  "hollr emit --agent claude-code --event blocked --payload-stdin";
+  "kelbrin emit --agent claude-code --event blocked --payload-stdin";
 const LEDGER_KEY = "claude-code:settings";
 const COMMAND_LEDGER_KEY = "claude-code:command";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 /** `which` fake that resolves nothing (claude not on PATH). */
 const whichNone = (): string | null => null;
@@ -50,7 +50,7 @@ function settingsPath(): string {
 }
 
 function commandPath(): string {
-  return join(home, ".claude", "commands", "hollr.md");
+  return join(home, ".claude", "commands", "kelbrin.md");
 }
 
 function writeSettings(json: unknown): void {
@@ -66,19 +66,19 @@ function readSettings(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-cc-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-cc-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -349,14 +349,14 @@ describe("claudeCode.wire", () => {
 });
 
 describe("claudeCode.wire slash command file", () => {
-  it("should_write_the_hollr_md_slash_command", async () => {
+  it("should_write_the_kelbrin_md_slash_command", async () => {
     await claudeCode.wire(deps());
     expect(existsSync(commandPath())).toBe(true);
     const md = readFileSync(commandPath(), "utf8");
     expect(md).toContain(
-      "description: Control hollr (pause/resume/stop/status/mute/doctor)",
+      "description: Control kelbrin (pause/resume/stop/status/mute/doctor)",
     );
-    expect(md).toContain("hollr $ARGUMENTS");
+    expect(md).toContain("kelbrin $ARGUMENTS");
     // `init` is terminal-only and must be documented as unavailable here.
     expect(md).toMatch(/init/i);
     expect(md).toMatch(/terminal-only/i);
@@ -364,7 +364,7 @@ describe("claudeCode.wire slash command file", () => {
 
   it("should_include_the_command_file_addition_in_the_wire_diff", async () => {
     const result = await claudeCode.wire(deps());
-    expect(result.diff).toContain("hollr $ARGUMENTS");
+    expect(result.diff).toContain("kelbrin $ARGUMENTS");
   });
 
   it("should_be_idempotent_for_the_command_file", async () => {
@@ -460,7 +460,7 @@ describe("claudeCode.unwire", () => {
 
   it("should_not_resurrect_legacy_v1_entries_on_unwire", async () => {
     // The legacy migration in `wireSettings` is one-way: it permanently retires
-    // the v0.1.x integration. Surgical unwire only removes hollr's OWN
+    // the v0.1.x integration. Surgical unwire only removes kelbrin's OWN
     // Stop/Notification entries from the file's current content — it must not
     // (and cannot, since nothing tracks it) bring the legacy junk back.
     writeSettings({
@@ -498,7 +498,7 @@ describe("claudeCode.unwire", () => {
     expect(existsSync(commandPath())).toBe(false);
   });
 
-  it("should_unwire_only_hollr_hooks_and_preserve_a_foreign_hook", async () => {
+  it("should_unwire_only_kelbrin_hooks_and_preserve_a_foreign_hook", async () => {
     const wiredDeps = deps();
     await claudeCode.wire(wiredDeps);
     const path = settingsPath();
@@ -512,7 +512,7 @@ describe("claudeCode.unwire", () => {
     const stopCommands = (out.hooks?.Stop ?? []).flatMap((e: { hooks: { command: string }[] }) =>
       e.hooks.map((h) => h.command),
     );
-    expect(stopCommands).toEqual(["my-own-thing"]); // hollr's Stop gone, user's kept
+    expect(stopCommands).toEqual(["my-own-thing"]); // kelbrin's Stop gone, user's kept
     expect(out.hooks.PreToolUse).toEqual([{ hooks: [{ command: "user-pretool" }] }]);
     expect(existsSync(commandPath())).toBe(false);
   });
@@ -562,5 +562,59 @@ describe("claudeCode.detect", () => {
     expect(claudeCode.memoryPath?.({ home: "/home/u", which: () => null })).toBe(
       "/home/u/.claude/CLAUDE.md",
     );
+  });
+});
+
+describe("claudeCode hollr→kelbrin rename compat", () => {
+  const LEGACY_STOP = "hollr emit --agent claude-code --event done --payload-stdin";
+  const LEGACY_NOTIFICATION = "hollr emit --agent claude-code --event blocked --payload-stdin";
+
+  function legacyCommandFilePath(): string {
+    return join(home, ".claude", "commands", "hollr.md");
+  }
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+    unwireFromLedger(COMMAND_LEDGER_KEY);
+  });
+
+  it("should_replace_legacy_hollr_hook_entries_on_wire_without_duplicating", async () => {
+    writeSettings({
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: LEGACY_STOP }] }],
+        Notification: [{ hooks: [{ type: "command", command: LEGACY_NOTIFICATION }] }],
+      },
+    });
+    await claudeCode.wire(deps());
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    const out = readSettings() as {
+      hooks: { Stop: { hooks: { command: string }[] }[] };
+    };
+    const stopCommands = out.hooks.Stop.flatMap((e) => e.hooks.map((h) => h.command));
+    expect(stopCommands).toEqual([STOP_COMMAND]);
+  });
+
+  it("should_unwire_legacy_hollr_hook_entries_without_rewiring", async () => {
+    writeSettings({
+      hooks: {
+        Stop: [
+          { hooks: [{ type: "command", command: LEGACY_STOP }] },
+          { hooks: [{ type: "command", command: "user-own-hook" }] },
+        ],
+        Notification: [{ hooks: [{ type: "command", command: LEGACY_NOTIFICATION }] }],
+      },
+    });
+    await claudeCode.unwire(deps());
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    expect(raw).toContain("user-own-hook");
+  });
+
+  it("should_remove_the_legacy_hollr_command_file_on_unwire", async () => {
+    mkdirSync(join(home, ".claude", "commands"), { recursive: true });
+    writeFileSync(legacyCommandFilePath(), "old hollr slash command\n", "utf8");
+    await claudeCode.unwire(deps());
+    expect(existsSync(legacyCommandFilePath())).toBe(false);
   });
 });

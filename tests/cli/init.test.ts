@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { listWiredKeys, unwireFromLedger, wireTextFile } from "../../src/adapters/diffwire.ts";
 import { injectReadaloud } from "../../src/adapters/instruction.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "../../src/adapters/types.ts";
-import type { Activation, HollrConfig } from "../../src/core/config.ts";
+import type { Activation, KelbrinConfig } from "../../src/core/config.ts";
 import { DEFAULTS } from "../../src/core/config.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { InitChoice, InitDeps, InitIo } from "../../src/cli/init-steps.ts";
@@ -22,24 +22,24 @@ import { runInit } from "../../src/cli/init-steps.ts";
 import { collectSinkConfig } from "../../src/cli/init-sinks.ts";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
+let kelbrinHomeDir: string;
 let userHome: string;
-let prevHollrHome: string | undefined;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-init-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-init-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   userHome = join(tmpRoot, "home");
   mkdirSync(userHome, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -190,29 +190,29 @@ function baseDeps(io: InitIo, adapters: Adapter[]): InitDeps {
   };
 }
 
-function readWrittenConfig(): HollrConfig {
-  return JSON.parse(readFileSync(join(hollrHomeDir, "config.json"), "utf8")) as HollrConfig;
+function readWrittenConfig(): KelbrinConfig {
+  return JSON.parse(readFileSync(join(kelbrinHomeDir, "config.json"), "utf8")) as KelbrinConfig;
 }
 
 function writeLedger(keys: string[]): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
+  mkdirSync(kelbrinHomeDir, { recursive: true });
   const entries = keys.map((ledgerKey) => ({
     ledgerKey,
     path: join(userHome, `${ledgerKey}.json`),
     before: null,
     at: "2026-01-01T00:00:00.000Z",
   }));
-  writeFileSync(join(hollrHomeDir, "wired.json"), JSON.stringify(entries));
+  writeFileSync(join(kelbrinHomeDir, "wired.json"), JSON.stringify(entries));
 }
 
 /** Pre-write a global config so a run exercises the "re-run" (existing) path. */
-function writeExistingConfig(config: HollrConfig): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(config));
+function writeExistingConfig(config: KelbrinConfig): void {
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(config));
 }
 
 /** A config with a webhook (auth header) + custom voice + quiet hours to preserve. */
-function configuredConfig(): HollrConfig {
+function configuredConfig(): KelbrinConfig {
   return {
     ...structuredClone(DEFAULTS),
     events: { done: { mode: "silent" }, blocked: { mode: "announce" }, error: { mode: "notify" } },
@@ -237,7 +237,7 @@ function configuredConfig(): HollrConfig {
  * collectSinkConfig) plus the default sink flow (all defaults, no webhooks).
  */
 function scriptDefaultSinks(io: ScriptIo, activation: Activation = "all"): void {
-  io.selectQueue.push(activation); // "When should hollr speak up?"
+  io.selectQueue.push(activation); // "When should kelbrin speak up?"
   io.selectQueue.push("announce", "announce", "notify"); // done/blocked/error modes
   io.confirmQueue.push(false); // enumerate voices? no
   io.textQueue.push(""); // sound name -> none
@@ -255,7 +255,7 @@ describe("runInit", () => {
     io.confirmQueue.push(false); // show exactly what changed? no
     io.confirmQueue.push(true); // keep wire changes
     scriptDefaultSinks(io);
-    io.confirmQueue.push(true); // preview with hollr test
+    io.confirmQueue.push(true); // preview with kelbrin test
 
     const result = await runInit(baseDeps(io, [adapter]), { yes: false });
 
@@ -281,7 +281,7 @@ describe("runInit", () => {
 
       await runInit(baseDeps(io, [adapter]), { yes: false });
 
-      const mode = statSync(join(hollrHomeDir, "config.json")).mode & 0o777;
+      const mode = statSync(join(kelbrinHomeDir, "config.json")).mode & 0o777;
       expect(mode).toBe(0o600);
     },
   );
@@ -484,7 +484,7 @@ describe("runInit", () => {
     const adapter = makeAdapter({ id: "a1", installed: false }, { wire: vi.fn(), unwire: vi.fn() });
     const io = new ScriptIo();
     io.multiselectQueue.push([]); // wire no agents
-    io.selectQueue.push("all"); // "When should hollr speak up?" (accept existing)
+    io.selectQueue.push("all"); // "When should kelbrin speak up?" (accept existing)
     io.selectQueue.push("silent", "announce", "notify"); // accept existing modes
     io.confirmQueue.push(false); // choose installed voices? no -> OS default
     io.textQueue.push(""); // sound -> none
@@ -554,7 +554,7 @@ describe("runInit", () => {
     await runInit(baseDeps(io, [adapter]), { yes: false });
 
     const mem = readFileSync(join(userHome, ".claude", "CLAUDE.md"), "utf8");
-    expect(mem).toContain("hollr:readaloud:start");
+    expect(mem).toContain("kelbrin:readaloud:start");
     expect(mem).toContain("open <file>");
   });
 
@@ -593,7 +593,7 @@ describe("runInit", () => {
     // read-aloud block already injected (mirrors makeAdapter's own wire()).
     wireTextFile(join(userHome, "claude-code.cfg"), "wired", "claude-code:cfg").apply();
     injectReadaloud(memoryPath, "open", "claude-code").apply();
-    expect(readFileSync(memoryPath, "utf8")).toContain("hollr:readaloud:start");
+    expect(readFileSync(memoryPath, "utf8")).toContain("kelbrin:readaloud:start");
     expect(listWiredKeys()).toContain("claude-code:readaloud");
 
     const io = new ScriptIo();
@@ -612,7 +612,7 @@ describe("runInit", () => {
     // Deselecting must clean up the readaloud block + ledger key too, even
     // though `:cfg` unwiring alone never touches the `:readaloud` entry.
     const mem = readFileSync(memoryPath, "utf8");
-    expect(mem).not.toContain("hollr:readaloud:start");
+    expect(mem).not.toContain("kelbrin:readaloud:start");
     expect(listWiredKeys()).not.toContain("claude-code:readaloud");
   });
 });

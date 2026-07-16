@@ -6,10 +6,10 @@
  *   - There is NO declarative `amp.hooks` array in `~/.config/amp/settings.json`.
  *     Amp's lifecycle hooks (`agent.end`, `tool.call`, …) are authored ONLY as
  *     TypeScript/JavaScript plugins (`.amp/plugins/*.ts`, `amp.on(event, fn)`),
- *     not as a JSON catalog hollr can safely write. hollr therefore does not
+ *     not as a JSON catalog kelbrin can safely write. kelbrin therefore does not
  *     fabricate a config file — {@link amp.wire} is instructions-only.
  *   - `amp.notifications.enabled` is Amp's own built-in turn-completion toggle;
- *     hollr leaves it to the user (it is context, not something hollr sets).
+ *     kelbrin leaves it to the user (it is context, not something kelbrin sets).
  *   - Threads/transcripts are stored on Sourcegraph's servers (cloud-only, synced
  *     across devices) with no reliable local file, so read-aloud is impossible:
  *     {@link amp.readLastResponse} always yields `null` and `readAloud` is false.
@@ -22,7 +22,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { EventName } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { unwireFromLedger } from "./diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
@@ -37,13 +37,13 @@ const CONFIG_SEGMENTS = [".config", "amp"] as const;
 
 /**
  * Guidance returned from {@link amp.wire}. Amp exposes no declarative hook
- * catalog, so hollr cannot auto-wire it; instead it points the user at Amp's
- * built-in notifications and the hollr `run` wrapper for announcements.
+ * catalog, so kelbrin cannot auto-wire it; instead it points the user at Amp's
+ * built-in notifications and the kelbrin `run` wrapper for announcements.
  */
 const FALLBACK_WARNINGS: readonly string[] = [
-  "Amp has no declarative hook catalog hollr can write, so nothing was changed.",
+  "Amp has no declarative hook catalog kelbrin can write, so nothing was changed.",
   'Enable Amp\'s built-in turn alert: set "amp.notifications.enabled": true in ~/.config/amp/settings.json.',
-  "For hollr voice announcements, launch Amp through the wrapper: `hollr run --agent amp -- amp`.",
+  "For kelbrin voice announcements, launch Amp through the wrapper: `kelbrin run --agent amp -- amp`.",
 ];
 
 type JsonObject = Record<string, unknown>;
@@ -72,7 +72,7 @@ function payloadCwd(raw: JsonObject): string {
 export const amp: Adapter = {
   id: ID,
   title: TITLE,
-  tagline: "Sourcegraph Amp — announce-only via amp.notifications + the hollr run wrapper",
+  tagline: "Sourcegraph Amp — announce-only via amp.notifications + the kelbrin run wrapper",
   capabilities: {
     done: true,
     blocked: false,
@@ -99,7 +99,7 @@ export const amp: Adapter = {
     return Promise.resolve();
   },
 
-  normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
+  normalize(raw: unknown, eventHint: EventName): KelbrinEvent | null {
     if (!isRecord(raw)) {
       return null;
     }

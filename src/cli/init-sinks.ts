@@ -1,18 +1,18 @@
 /**
- * Pure sink-configuration steps for `hollr init`: per-event modes, voice, sound,
+ * Pure sink-configuration steps for `kelbrin init`: per-event modes, voice, sound,
  * quiet hours, and the webhook loop. Every prompt goes through the injected
  * {@link InitIo} so the whole flow is scripted-answer testable — @clack never
  * appears here (it lives only in the `init.ts` shell). Voice enumeration is
  * injected too, so tests never spawn a process.
  *
- * The result is a complete {@link HollrConfig} built from {@link DEFAULTS} plus
+ * The result is a complete {@link KelbrinConfig} built from {@link DEFAULTS} plus
  * the user's answers; `init-steps.ts` writes it to disk.
  */
 
 import type {
   EventConfig,
   EventName,
-  HollrConfig,
+  KelbrinConfig,
   Mode,
   QuietHoursWebhooks,
   VoiceConfig,
@@ -44,7 +44,7 @@ export type EnumerateVoices = () => string[];
 async function collectOpenCommand(
   io: InitIo,
   events: Record<EventName, EventConfig>,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
   defaultOpen: string,
 ): Promise<string> {
   if (events.done.mode !== "readaloud") {
@@ -66,7 +66,7 @@ async function collectOpenCommand(
 /** Ask the mode for every event, seeded from the user's current config. */
 async function collectModes(
   io: InitIo,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
 ): Promise<Record<EventName, EventConfig>> {
   const events = structuredClone(existing.events);
   for (const event of EVENT_NAMES) {
@@ -84,7 +84,7 @@ async function collectModes(
 async function collectVoice(
   io: InitIo,
   enumerate: EnumerateVoices,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
 ): Promise<VoiceConfig> {
   const voice = structuredClone(existing.voice);
   const pickInstalled = await io.confirm({
@@ -113,7 +113,7 @@ async function collectVoice(
 }
 
 /** A notification sound name, or `null` when the user leaves it blank. */
-async function collectSound(io: InitIo, existing: HollrConfig): Promise<string | null> {
+async function collectSound(io: InitIo, existing: KelbrinConfig): Promise<string | null> {
   const name = (
     await io.text({
       message: "Notification sound name (leave blank for none)",
@@ -124,7 +124,7 @@ async function collectSound(io: InitIo, existing: HollrConfig): Promise<string |
 }
 
 /** Prompt (and re-prompt) for a valid quiet-hours window; blank means disabled. */
-async function promptQuietHours(io: InitIo, existing: HollrConfig): Promise<string | null> {
+async function promptQuietHours(io: InitIo, existing: KelbrinConfig): Promise<string | null> {
   const seed = existing.quietHours ?? "";
   for (let attempt = 0; attempt < MAX_PROMPT_ATTEMPTS; attempt += 1) {
     const raw = (
@@ -146,7 +146,7 @@ async function promptQuietHours(io: InitIo, existing: HollrConfig): Promise<stri
 
 async function collectQuietHours(
   io: InitIo,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
 ): Promise<{ spec: string | null; webhooks: QuietHoursWebhooks }> {
   const spec = await promptQuietHours(io, existing);
   if (spec === null) {
@@ -258,7 +258,7 @@ async function collectOneWebhook(io: InitIo): Promise<WebhookTarget | null> {
  */
 async function collectWebhooks(
   io: InitIo,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
 ): Promise<WebhookTarget[]> {
   const targets: WebhookTarget[] = existing.webhooks.map((target) => structuredClone(target));
   let add = await io.confirm({ message: "Add a webhook?", initialValue: false });
@@ -281,9 +281,9 @@ async function collectWebhooks(
 export async function collectSinkConfig(
   io: InitIo,
   enumerate: EnumerateVoices,
-  existing: HollrConfig,
+  existing: KelbrinConfig,
   defaultOpen: string,
-): Promise<HollrConfig> {
+): Promise<KelbrinConfig> {
   const config = structuredClone(existing);
   config.events = await collectModes(io, existing);
   config.readaloud = {

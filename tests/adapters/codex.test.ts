@@ -20,9 +20,9 @@ const NOTIFY_PAYLOAD = JSON.parse(
 ) as Record<string, unknown>;
 
 const NOTIFY_LINE =
-  'notify = ["hollr", "emit", "--agent", "codex", "--event", "done", "--payload-argv"]';
+  'notify = ["kelbrin", "emit", "--agent", "codex", "--event", "done", "--payload-argv"]';
 const BLOCKED_COMMAND =
-  "hollr emit --agent codex --event blocked --payload-stdin";
+  "kelbrin emit --agent codex --event blocked --payload-stdin";
 const CONFIG_LEDGER_KEY = "codex:config";
 const HOOKS_LEDGER_KEY = "codex:hooks";
 
@@ -36,8 +36,8 @@ const PERMISSION_PAYLOAD: Record<string, unknown> = {
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 const whichNone = (): string | null => null;
 const whichCodex = (bin: string): string | null =>
@@ -72,21 +72,21 @@ function readHooks(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-codex-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-codex-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
   unwireFromLedger(CONFIG_LEDGER_KEY);
   unwireFromLedger(HOOKS_LEDGER_KEY);
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -201,7 +201,7 @@ describe("codex.wire config.toml notify", () => {
     expect(text).not.toContain("old-notifier");
     expect(text).toContain(NOTIFY_LINE);
     expect(text).toContain('model = "gpt-5"');
-    // Exactly one `notify =` and one `]` (the one inside the hollr line).
+    // Exactly one `notify =` and one `]` (the one inside the kelbrin line).
     expect(text.split("notify =").length).toBe(2);
     expect((text.match(/\]/g) ?? []).length).toBe(1);
     // No dangling continuation line or stray closing bracket survives.
@@ -224,7 +224,7 @@ describe("codex.wire config.toml notify", () => {
     const text = readConfig();
     // A notify nested in a table is left untouched...
     expect(text).toContain('notify = ["scoped-notifier"]');
-    // ...and hollr's top-level notify is inserted before the section.
+    // ...and kelbrin's top-level notify is inserted before the section.
     expect(text).toContain(NOTIFY_LINE);
     expect(text.indexOf(NOTIFY_LINE)).toBeLessThan(text.indexOf("[profile.ci]"));
     expect(text.indexOf(NOTIFY_LINE)).toBeLessThan(text.indexOf("scoped-notifier"));
@@ -284,7 +284,7 @@ describe("codex.wire hooks.json blocked", () => {
 });
 
 describe("codex.unwire", () => {
-  it("should_restore_config_byte_identically_and_clear_hollr_hooks", async () => {
+  it("should_restore_config_byte_identically_and_clear_kelbrin_hooks", async () => {
     writeConfig('model = "gpt-5"\n');
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(hooksPath(), `${JSON.stringify({ hooks: {} }, null, 2)}\n`, "utf8");
@@ -296,7 +296,7 @@ describe("codex.unwire", () => {
     expect(JSON.stringify(readHooks())).not.toContain(BLOCKED_COMMAND);
   });
 
-  it("should_leave_existing_but_hollr_free_files_when_nothing_preexisted", async () => {
+  it("should_leave_existing_but_kelbrin_free_files_when_nothing_preexisted", async () => {
     await codex.wire(deps());
     expect(existsSync(configPath())).toBe(true);
     expect(existsSync(hooksPath())).toBe(true);
@@ -319,7 +319,7 @@ describe("codex.unwire", () => {
     expect(out).toContain('model = "gpt-5"');
   });
 
-  it("should_unwire_only_hollr_permission_hook_and_keep_foreign", async () => {
+  it("should_unwire_only_kelbrin_permission_hook_and_keep_foreign", async () => {
     const testDeps = deps();
     await codex.wire(testDeps);
     const cfg = readHooks();
@@ -343,7 +343,7 @@ describe("codex.wire/unwire notify archive & restore", () => {
   const USER_NOTIFY = 'notify = ["my", "cmd"]';
 
   function notifyBackupPath(): string {
-    return join(hollrHomeDir, "codex-notify.bak");
+    return join(kelbrinHomeDir, "codex-notify.bak");
   }
 
   it("should_archive_a_pre_existing_user_notify_on_wire", async () => {
@@ -373,11 +373,67 @@ describe("codex.wire/unwire notify archive & restore", () => {
     expect(existsSync(notifyBackupPath())).toBe(false);
   });
 
-  it("should_not_archive_when_the_existing_notify_is_already_hollrs_own", async () => {
+  it("should_not_archive_when_the_existing_notify_is_already_kelbrins_own", async () => {
     const testDeps = deps();
     await codex.wire(testDeps);
     await codex.wire(testDeps);
     expect(existsSync(notifyBackupPath())).toBe(false);
+  });
+});
+
+describe("codex hollr→kelbrin rename compat", () => {
+  const LEGACY_NOTIFY_LINE =
+    'notify = ["hollr", "emit", "--agent", "codex", "--event", "done", "--payload-argv"]';
+  const LEGACY_BLOCKED_COMMAND =
+    "hollr emit --agent codex --event blocked --payload-stdin";
+
+  function notifyBackupPath(): string {
+    return join(kelbrinHomeDir, "codex-notify.bak");
+  }
+
+  it("should_replace_the_legacy_notify_line_on_wire_without_archiving_it", async () => {
+    writeConfig(`${LEGACY_NOTIFY_LINE}\n`);
+    const testDeps = deps();
+    await codex.wire(testDeps);
+    expect(readConfig()).toContain(NOTIFY_LINE);
+    expect(readConfig()).not.toContain('"hollr"');
+    // The legacy line is kelbrin's own pre-rename wiring, NOT a user notify —
+    // it must not be archived for later restore.
+    expect(existsSync(notifyBackupPath())).toBe(false);
+    await codex.unwire(testDeps);
+    expect(readConfig()).not.toContain(LEGACY_NOTIFY_LINE);
+    expect(readConfig()).not.toContain(NOTIFY_LINE);
+  });
+
+  it("should_replace_the_legacy_permission_hook_entry_on_wire_without_duplicating", async () => {
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      hooksPath(),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PermissionRequest: [
+              {
+                matcher: ".*",
+                hooks: [{ type: "command", command: LEGACY_BLOCKED_COMMAND }],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await codex.wire(deps());
+    const raw = readFileSync(hooksPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    const hooks = readHooks().hooks as Record<string, unknown>;
+    const entries = hooks.PermissionRequest as Array<{
+      hooks: Array<{ command: string }>;
+    }>;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.hooks[0]?.command).toBe(BLOCKED_COMMAND);
   });
 });
 

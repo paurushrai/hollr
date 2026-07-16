@@ -1,6 +1,6 @@
 /**
  * macOS (darwin) engine. Builds argv for the built-in `say`, `osascript`, and
- * `afplay` binaries. Ported behavior-for-behavior from hollr v1's
+ * `afplay` binaries. Ported behavior-for-behavior from kelbrin v1's
  * `lib/speech.py`; the sanitizers below are security boundaries — they block
  * argument injection and path traversal at the point argv is constructed.
  */

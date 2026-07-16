@@ -5,7 +5,7 @@
  * are not shared (win32's -10..10 scale) live in their own engine files.
  */
 
-/** hollr's default speaking rate, in words per minute. */
+/** kelbrin's default speaking rate, in words per minute. */
 export const DEFAULT_RATE_WPM = 190;
 
 /** `spd-say -r` bounds and baseline: 150→-40, 190→0, 220→+30 (slope 1/wpm). */

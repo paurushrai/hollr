@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import { projectLabel } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
@@ -15,21 +15,21 @@ const CWD = "/Users/me/dev/my-app";
 const ONE_MB = 1024 * 1024;
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-emit-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-emit-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -37,8 +37,8 @@ afterEach(() => {
 
 /** Writing a global config makes every cwd "configured" (isConfigured true). */
 function configureGlobal(overrides: Record<string, unknown> = {}): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(overrides));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(overrides));
 }
 
 function fakePlatform(): Platform {
@@ -65,7 +65,7 @@ function makeDeps(stdin = ""): Harness {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
   const webhooks =
-    vi.fn<(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
+    vi.fn<(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
   const deps: EmitDeps = {
     readStdin: () => Promise.resolve(stdin),
     platform: fakePlatform(),
@@ -145,7 +145,7 @@ describe("runEmit drives route", () => {
     expect(code).toBe(0);
     expect(spokenText(speak)).toBe("Claude Code response is ready in my app");
     expect(notify).toHaveBeenCalledTimes(1);
-    const logLine = readFileSync(join(hollrHomeDir, "events.log"), "utf8").trim();
+    const logLine = readFileSync(join(kelbrinHomeDir, "events.log"), "utf8").trim();
     expect(logLine).toContain("claude-code done my app");
   });
 

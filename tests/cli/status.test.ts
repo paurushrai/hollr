@@ -9,21 +9,21 @@ import type { StatusIo, StatusModel } from "../../src/cli/status.ts";
 import { formatStatus, runStatus } from "../../src/cli/status.ts";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-status-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-status-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -58,24 +58,24 @@ function outText(out: ReturnType<typeof vi.fn>): string {
 }
 
 function writeGlobal(config: Record<string, unknown>): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(config));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(config));
 }
 
 function writeLedger(keys: string[]): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
+  mkdirSync(kelbrinHomeDir, { recursive: true });
   const entries = keys.map((ledgerKey) => ({
     ledgerKey,
     path: "/some/file",
     before: null,
     at: "2026-07-11T00:00:00.000Z",
   }));
-  writeFileSync(join(hollrHomeDir, "wired.json"), JSON.stringify(entries));
+  writeFileSync(join(kelbrinHomeDir, "wired.json"), JSON.stringify(entries));
 }
 
 function writeLog(name: string, lines: string[]): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, name), `${lines.join("\n")}\n`);
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, name), `${lines.join("\n")}\n`);
 }
 
 describe("runStatus report", () => {
@@ -148,8 +148,8 @@ describe("runStatus report", () => {
 
   it("should_report_muted_when_flag_present", () => {
     writeGlobal({});
-    mkdirSync(join(hollrHomeDir, "projects"), { recursive: true });
-    writeFileSync(join(hollrHomeDir, "projects", `${encodeCwd(process.cwd())}.muted`), "");
+    mkdirSync(join(kelbrinHomeDir, "projects"), { recursive: true });
+    writeFileSync(join(kelbrinHomeDir, "projects", `${encodeCwd(process.cwd())}.muted`), "");
     const { io, out } = makeIo();
     runStatus(io);
     expect(outText(out)).toContain("off for this project");
@@ -235,13 +235,13 @@ describe("status plain-language scope lines", () => {
   });
   it("under opt-in with no override, prompts to enable here", () => {
     expect(formatStatus({ ...base, activation: "opt-in" })).toContain(
-      "not turned on here — run 'hollr on'",
+      "not turned on here — run 'kelbrin on'",
     );
   });
   it("shows an indefinite quiet", () => {
     expect(
       formatStatus({ ...base, quiet: { active: true, remainingMinutes: null } }),
-    ).toContain("quiet until you run 'hollr quiet off'");
+    ).toContain("quiet until you run 'kelbrin quiet off'");
   });
   it("shows minutes remaining for a timed quiet", () => {
     expect(

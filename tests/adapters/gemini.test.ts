@@ -22,16 +22,16 @@ const NOTIFICATION_PAYLOAD = JSON.parse(
   readFileSync(join(FIXTURES, "notification.json"), "utf8"),
 ) as Record<string, unknown>;
 
-const DONE_COMMAND = "hollr emit --agent gemini --event done --payload-stdin";
+const DONE_COMMAND = "kelbrin emit --agent gemini --event done --payload-stdin";
 const BLOCKED_COMMAND =
-  "hollr emit --agent gemini --event blocked --payload-stdin";
+  "kelbrin emit --agent gemini --event blocked --payload-stdin";
 const SETTINGS_LEDGER_KEY = "gemini:settings";
 const COMMAND_LEDGER_KEY = "gemini:command";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 const whichNone = (): string | null => null;
 const whichGemini = (bin: string): string | null =>
@@ -46,7 +46,7 @@ function settingsPath(): string {
 }
 
 function commandPath(): string {
-  return join(home, ".gemini", "commands", "hollr.toml");
+  return join(home, ".gemini", "commands", "kelbrin.toml");
 }
 
 function readSettings(): Record<string, unknown> {
@@ -66,21 +66,21 @@ function hookEntries(event: string): Array<{
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-gemini-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-gemini-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
   unwireFromLedger(SETTINGS_LEDGER_KEY);
   unwireFromLedger(COMMAND_LEDGER_KEY);
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -202,13 +202,13 @@ describe("gemini.wire settings.json hooks", () => {
 });
 
 describe("gemini.wire slash command file", () => {
-  it("should_write_the_hollr_toml_custom_command", async () => {
+  it("should_write_the_kelbrin_toml_custom_command", async () => {
     await gemini.wire(deps());
     expect(existsSync(commandPath())).toBe(true);
     const toml = readFileSync(commandPath(), "utf8");
     expect(toml).toContain("description =");
     expect(toml).toContain("prompt =");
-    expect(toml).toContain("!{hollr {{args}}}");
+    expect(toml).toContain("!{kelbrin {{args}}}");
   });
 
   it("should_be_idempotent_for_the_command_file", async () => {
@@ -221,7 +221,7 @@ describe("gemini.wire slash command file", () => {
 });
 
 describe("gemini.unwire", () => {
-  it("should_unwire_only_hollr_gemini_hooks_and_keep_foreign_plus_delete_command", async () => {
+  it("should_unwire_only_kelbrin_gemini_hooks_and_keep_foreign_plus_delete_command", async () => {
     const testDeps = deps();
     await gemini.wire(testDeps);
     const path = join(home, ".gemini", "settings.json");
@@ -234,7 +234,7 @@ describe("gemini.unwire", () => {
       e.hooks.map((h) => h.command),
     );
     expect(cmds).toEqual(["user-after"]);
-    expect(existsSync(join(home, ".gemini", "commands", "hollr.toml"))).toBe(false);
+    expect(existsSync(join(home, ".gemini", "commands", "kelbrin.toml"))).toBe(false);
   });
 
   it("should_preserve_an_unrelated_hook_event_on_unwire", async () => {
@@ -284,6 +284,71 @@ describe("gemini.unwire", () => {
   });
 });
 
+describe("gemini hollr→kelbrin rename compat", () => {
+  const LEGACY_DONE = "hollr emit --agent gemini --event done --payload-stdin";
+  const LEGACY_BLOCKED =
+    "hollr emit --agent gemini --event blocked --payload-stdin";
+
+  function legacyCommandFilePath(): string {
+    return join(home, ".gemini", "commands", "hollr.toml");
+  }
+
+  function writeLegacySettings(extraAfterAgent: unknown[] = []): void {
+    mkdirSync(join(home, ".gemini"), { recursive: true });
+    writeFileSync(
+      settingsPath(),
+      `${JSON.stringify(
+        {
+          hooks: {
+            AfterAgent: [
+              { hooks: [{ type: "command", command: LEGACY_DONE }] },
+              ...extraAfterAgent,
+            ],
+            Notification: [
+              { hooks: [{ type: "command", command: LEGACY_BLOCKED }] },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
+
+  it("should_replace_legacy_hollr_hook_entries_on_wire_without_duplicating", async () => {
+    writeLegacySettings();
+    await gemini.wire(deps());
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    const afterAgentCommands = hookEntries("AfterAgent").flatMap((entry) =>
+      entry.hooks.map((hook) => hook.command),
+    );
+    const notificationCommands = hookEntries("Notification").flatMap((entry) =>
+      entry.hooks.map((hook) => hook.command),
+    );
+    expect(afterAgentCommands).toEqual([DONE_COMMAND]);
+    expect(notificationCommands).toEqual([BLOCKED_COMMAND]);
+  });
+
+  it("should_unwire_legacy_hollr_hook_entries_without_rewiring", async () => {
+    writeLegacySettings([
+      { hooks: [{ type: "command", command: "user-own-hook" }] },
+    ]);
+    await gemini.unwire(deps());
+    const raw = readFileSync(settingsPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    expect(raw).toContain("user-own-hook");
+  });
+
+  it("should_remove_the_legacy_hollr_command_file_on_unwire", async () => {
+    mkdirSync(join(home, ".gemini", "commands"), { recursive: true });
+    writeFileSync(legacyCommandFilePath(), "old hollr custom command\n", "utf8");
+    await gemini.unwire(deps());
+    expect(existsSync(legacyCommandFilePath())).toBe(false);
+  });
+});
+
 describe("gemini.detect", () => {
   it("should_report_installed_when_gemini_is_on_path", async () => {
     const detection = await gemini.detect(deps(whichGemini));
@@ -297,7 +362,7 @@ describe("gemini.detect", () => {
     mkdirSync(join(home, ".gemini", "antigravity-cli"), { recursive: true });
     writeFileSync(
       join(home, ".gemini", "hooks.json"),
-      `${JSON.stringify({ hollr: {} }, null, 2)}\n`,
+      `${JSON.stringify({ kelbrin: {} }, null, 2)}\n`,
       "utf8",
     );
     const detection = await gemini.detect(deps(whichNone));

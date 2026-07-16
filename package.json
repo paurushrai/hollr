@@ -1,7 +1,7 @@
 {
-  "name": "hollr-cli",
+  "name": "kelbrin",
   "version": "0.5.0",
-  "description": "Voice, desktop, and webhook notifications for CLI coding agents (Claude Code, Codex, Gemini, Copilot, Cursor & more) — calls out the moment your agent finishes or needs you.",
+  "description": "Voice, desktop, and webhook notifications for CLI coding agents (Claude Code, Codex, Gemini, Copilot, Cursor & more) \u2014 calls out the moment your agent finishes or needs you.",
   "keywords": [
     "cli",
     "notifications",
@@ -27,17 +27,18 @@
     "terminal",
     "hooks"
   ],
-  "homepage": "https://github.com/paurushrai/hollr#readme",
+  "homepage": "https://github.com/paurushrai/kelbrin#readme",
   "bugs": {
-    "url": "https://github.com/paurushrai/hollr/issues"
+    "url": "https://github.com/paurushrai/kelbrin/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/paurushrai/hollr.git"
+    "url": "git+https://github.com/paurushrai/kelbrin.git"
   },
   "author": "Paurush Rai",
   "type": "module",
   "bin": {
+    "kelbrin": "dist/index.js",
     "hollr": "dist/index.js"
   },
   "files": [

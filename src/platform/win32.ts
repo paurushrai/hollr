@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { hollrHome } from "../core/config.ts";
+import { kelbrinHome } from "../core/config.ts";
 import type { Platform, RequiredBinary } from "./index.ts";
 
 const POWERSHELL = ["powershell", "-NoProfile", "-Command"] as const;
@@ -100,7 +100,7 @@ export class Win32Platform implements Platform {
       `$n.Item(0).AppendChild($t.CreateTextNode([IO.File]::ReadAllText('${titleTmp}'))) > $null`,
       `$n.Item(1).AppendChild($t.CreateTextNode([IO.File]::ReadAllText('${bodyTmp}'))) > $null`,
       "$toast=[Windows.UI.Notifications.ToastNotification]::new($t)",
-      "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('hollr').Show($toast)",
+      "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('kelbrin').Show($toast)",
       removeItem(titleTmp),
       removeItem(bodyTmp),
     ].join("; ");
@@ -137,9 +137,9 @@ export class Win32Platform implements Platform {
     return names;
   }
 
-  /** Write `text` to `<HOLLR_HOME>/tmp/<prefix>-<pid>.txt` and return its path. */
+  /** Write `text` to `<KELBRIN_HOME>/tmp/<prefix>-<pid>.txt` and return its path. */
   #writeTmp(prefix: string, text: string): string {
-    const dir = join(hollrHome(), TMP_SUBDIR);
+    const dir = join(kelbrinHome(), TMP_SUBDIR);
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${prefix}-${process.pid}.txt`);
     writeFileSync(path, text, "utf8");

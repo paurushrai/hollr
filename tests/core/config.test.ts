@@ -1,6 +1,8 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,39 +14,40 @@ import {
   DEFAULTS,
   defaultOpenCommand,
   encodeCwd,
-  hollrHome,
+  kelbrinHome,
   inQuietHours,
   isConfigured,
   isProjectEnabled,
   isMuted,
   loadConfig,
   migrateHttpOptIn,
+  migrateLegacyHome,
   migrateV1,
   quietActive,
   quietUntilPath,
 } from "../../src/core/config.ts";
-import type { HollrConfig, WebhookTarget } from "../../src/core/config.ts";
+import type { KelbrinConfig, WebhookTarget } from "../../src/core/config.ts";
 
 const PROJECT = "/some/project";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
+let kelbrinHomeDir: string;
 let prevHome: string | undefined;
-let prevHollrHome: string | undefined;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-cfg-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-cfg-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   prevHome = process.env.HOME;
-  prevHollrHome = process.env.HOLLR_HOME;
-  // Isolate both v2 home ($HOLLR_HOME) and v1 source (~/.claude via $HOME).
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  // Isolate both v2 home ($KELBRIN_HOME) and v1 source (~/.claude via $HOME).
   process.env.HOME = tmpRoot;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
   restoreEnv("HOME", prevHome);
-  restoreEnv("HOLLR_HOME", prevHollrHome);
+  restoreEnv("KELBRIN_HOME", prevKelbrinHome);
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -57,23 +60,23 @@ function restoreEnv(key: string, value: string | undefined): void {
 }
 
 function writeGlobal(config: unknown): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(config));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(config));
 }
 
 function writeGlobalRaw(raw: string): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), raw);
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), raw);
 }
 
 function writeProject(cwd: string, config: unknown): void {
-  const dir = join(hollrHomeDir, "projects");
+  const dir = join(kelbrinHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.json`), JSON.stringify(config));
 }
 
 function touchMute(cwd: string): void {
-  const dir = join(hollrHomeDir, "projects");
+  const dir = join(kelbrinHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.muted`), "");
 }
@@ -209,7 +212,7 @@ describe("migrateHttpOptIn", () => {
   function configWith(
     allowHttp: boolean,
     webhooks: WebhookTarget[],
-  ): HollrConfig {
+  ): KelbrinConfig {
     return { ...structuredClone(DEFAULTS), allowHttp, webhooks };
   }
 
@@ -257,6 +260,57 @@ describe("migrateHttpOptIn", () => {
   });
 });
 
+describe("kelbrinHome", () => {
+  it("should_fall_back_to_legacy_HOLLR_HOME_when_KELBRIN_HOME_unset", () => {
+    const prevLegacy = process.env.HOLLR_HOME;
+    delete process.env.KELBRIN_HOME;
+    process.env.HOLLR_HOME = join(tmpRoot, "legacy-home");
+    try {
+      expect(kelbrinHome()).toBe(join(tmpRoot, "legacy-home"));
+    } finally {
+      restoreEnv("HOLLR_HOME", prevLegacy);
+    }
+  });
+});
+
+describe("migrateLegacyHome", () => {
+  const legacyDir = (): string => join(tmpRoot, ".config", "hollr");
+  const newDir = (): string => join(tmpRoot, ".config", "kelbrin");
+
+  it("should_rename_legacy_hollr_home_when_kelbrin_home_missing", () => {
+    delete process.env.KELBRIN_HOME;
+    mkdirSync(legacyDir(), { recursive: true });
+    writeFileSync(join(legacyDir(), "config.json"), "{}\n", "utf8");
+    migrateLegacyHome();
+    expect(existsSync(join(newDir(), "config.json"))).toBe(true);
+    expect(existsSync(legacyDir())).toBe(false);
+  });
+
+  it("should_leave_both_dirs_untouched_when_kelbrin_home_exists", () => {
+    delete process.env.KELBRIN_HOME;
+    mkdirSync(legacyDir(), { recursive: true });
+    writeFileSync(join(legacyDir(), "config.json"), "{}\n", "utf8");
+    mkdirSync(newDir(), { recursive: true });
+    writeFileSync(join(newDir(), "config.json"), '{"version":2}\n', "utf8");
+    migrateLegacyHome();
+    expect(existsSync(join(legacyDir(), "config.json"))).toBe(true);
+    expect(readFileSync(join(newDir(), "config.json"), "utf8")).toContain('"version":2');
+  });
+
+  it("should_skip_migration_when_an_env_override_is_set", () => {
+    mkdirSync(legacyDir(), { recursive: true });
+    migrateLegacyHome(); // KELBRIN_HOME points elsewhere (beforeEach)
+    expect(existsSync(legacyDir())).toBe(true);
+    expect(existsSync(newDir())).toBe(false);
+  });
+
+  it("should_do_nothing_when_no_legacy_dir_exists", () => {
+    delete process.env.KELBRIN_HOME;
+    migrateLegacyHome();
+    expect(existsSync(newDir())).toBe(false);
+  });
+});
+
 describe("migrateV1", () => {
   it("should_migrate_v1_config_and_map_renamed_fields", () => {
     writeV1({
@@ -301,11 +355,11 @@ describe("migrateV1", () => {
 
   it("should_return_false_and_not_throw_when_the_write_fails", () => {
     writeV1({ voice: { name: "Alex", rate_wpm: 210 } });
-    // Point HOLLR_HOME below a plain file so mkdirSync(recursive) hits
+    // Point KELBRIN_HOME below a plain file so mkdirSync(recursive) hits
     // ENOTDIR — the write fails without relying on filesystem permissions.
     const blocker = join(tmpRoot, "blocker");
     writeFileSync(blocker, "");
-    process.env.HOLLR_HOME = join(blocker, "hollr");
+    process.env.KELBRIN_HOME = join(blocker, "kelbrin");
     let result: boolean | undefined;
     expect(() => {
       result = migrateV1();
@@ -316,13 +370,13 @@ describe("migrateV1", () => {
 
 describe("activation default", () => {
   it("defaults activation to 'all' when absent from the config file", () => {
-    mkdirSync(hollrHome(), { recursive: true });
-    writeFileSync(join(hollrHome(), "config.json"), JSON.stringify({ version: 2 }));
+    mkdirSync(kelbrinHome(), { recursive: true });
+    writeFileSync(join(kelbrinHome(), "config.json"), JSON.stringify({ version: 2 }));
     expect(loadConfig("/tmp/proj").activation).toBe("all");
   });
   it("reads an explicit opt-in activation", () => {
-    mkdirSync(hollrHome(), { recursive: true });
-    writeFileSync(join(hollrHome(), "config.json"), JSON.stringify({ activation: "opt-in" }));
+    mkdirSync(kelbrinHome(), { recursive: true });
+    writeFileSync(join(kelbrinHome(), "config.json"), JSON.stringify({ activation: "opt-in" }));
     expect(loadConfig("/tmp/proj").activation).toBe("opt-in");
   });
 });
@@ -332,7 +386,7 @@ describe("isProjectEnabled", () => {
     expect(isProjectEnabled("/tmp/proj")).toBe(false);
   });
   it("is true when the .enabled marker exists", () => {
-    const dir = join(hollrHome(), "projects");
+    const dir = join(kelbrinHome(), "projects");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${encodeCwd("/tmp/proj")}.enabled`), "");
     expect(isProjectEnabled("/tmp/proj")).toBe(true);
@@ -342,7 +396,7 @@ describe("isProjectEnabled", () => {
 describe("quietActive", () => {
   const now = new Date("2026-07-12T12:00:00Z");
   const writeQuiet = (body: string) => {
-    mkdirSync(hollrHome(), { recursive: true });
+    mkdirSync(kelbrinHome(), { recursive: true });
     writeFileSync(quietUntilPath(), body);
   };
   it("is false when no quiet-until marker exists", () => {

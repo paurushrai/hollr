@@ -40,7 +40,7 @@ function writePidfile(raw: string): void {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-ctl-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-ctl-"));
   pidPath = join(tmpRoot, "reading.pid");
   killCalls = [];
 });
@@ -53,49 +53,49 @@ describe("pauseReading", () => {
   it("should_signal_sigstop_and_report_paused_when_a_reader_is_tracked", () => {
     writePidfile(String(RUNNING_PID));
     const message = pauseReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: reading paused");
+    expect(message).toBe("kelbrin: reading paused");
     expect(killCalls).toEqual([{ pid: RUNNING_PID, signal: "SIGSTOP" }]);
     expect(existsSync(pidPath)).toBe(true);
   });
 
   it("should_report_nothing_when_pidfile_is_missing", () => {
     const message = pauseReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(killCalls).toEqual([]);
   });
 
   it("should_report_nothing_when_pidfile_is_garbage", () => {
     writePidfile("not-a-pid");
     const message = pauseReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(killCalls).toEqual([]);
   });
 
   it("should_report_nothing_when_pidfile_is_empty", () => {
     writePidfile("   ");
     const message = pauseReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(killCalls).toEqual([]);
   });
 
   it("should_clear_pidfile_and_report_nothing_when_pid_is_stale_esrch", () => {
     writePidfile(String(RUNNING_PID));
     const message = pauseReading({ platform: DARWIN, kill: throwingKill("ESRCH"), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(existsSync(pidPath)).toBe(false);
   });
 
   it("should_clear_pidfile_and_report_nothing_when_kill_denied_eperm", () => {
     writePidfile(String(RUNNING_PID));
     const message = pauseReading({ platform: DARWIN, kill: throwingKill("EPERM"), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(existsSync(pidPath)).toBe(false);
   });
 
   it("should_report_unsupported_without_signaling_on_win32", () => {
     writePidfile(String(RUNNING_PID));
     const message = pauseReading({ platform: WIN32, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: pause is not supported on Windows — use hollr stop");
+    expect(message).toBe("kelbrin: pause is not supported on Windows — use kelbrin stop");
     expect(killCalls).toEqual([]);
     expect(existsSync(pidPath)).toBe(true);
   });
@@ -105,20 +105,20 @@ describe("resumeReading", () => {
   it("should_signal_sigcont_and_report_resumed_when_a_reader_is_tracked", () => {
     writePidfile(String(RUNNING_PID));
     const message = resumeReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: reading resumed");
+    expect(message).toBe("kelbrin: reading resumed");
     expect(killCalls).toEqual([{ pid: RUNNING_PID, signal: "SIGCONT" }]);
   });
 
   it("should_report_nothing_when_pidfile_is_missing", () => {
     const message = resumeReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(killCalls).toEqual([]);
   });
 
   it("should_report_unsupported_without_signaling_on_win32", () => {
     writePidfile(String(RUNNING_PID));
     const message = resumeReading({ platform: WIN32, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: pause is not supported on Windows — use hollr stop");
+    expect(message).toBe("kelbrin: pause is not supported on Windows — use kelbrin stop");
     expect(killCalls).toEqual([]);
   });
 });
@@ -127,7 +127,7 @@ describe("stopReading", () => {
   it("should_signal_sigterm_clear_pidfile_and_report_stopped_on_posix", () => {
     writePidfile(String(RUNNING_PID));
     const message = stopReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: reading stopped");
+    expect(message).toBe("kelbrin: reading stopped");
     expect(killCalls).toEqual([{ pid: RUNNING_PID, signal: "SIGTERM" }]);
     expect(existsSync(pidPath)).toBe(false);
   });
@@ -135,21 +135,21 @@ describe("stopReading", () => {
   it("should_kill_with_default_signal_on_win32", () => {
     writePidfile(String(RUNNING_PID));
     const message = stopReading({ platform: WIN32, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: reading stopped");
+    expect(message).toBe("kelbrin: reading stopped");
     expect(killCalls).toEqual([{ pid: RUNNING_PID, signal: undefined }]);
     expect(existsSync(pidPath)).toBe(false);
   });
 
   it("should_report_nothing_when_pidfile_is_missing", () => {
     const message = stopReading({ platform: DARWIN, kill: recordingKill(), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(killCalls).toEqual([]);
   });
 
   it("should_clear_pidfile_and_report_nothing_when_pid_is_stale", () => {
     writePidfile(String(RUNNING_PID));
     const message = stopReading({ platform: DARWIN, kill: throwingKill("ESRCH"), pidPath });
-    expect(message).toBe("hollr: nothing is being read");
+    expect(message).toBe("kelbrin: nothing is being read");
     expect(existsSync(pidPath)).toBe(false);
   });
 
@@ -162,23 +162,23 @@ describe("stopReading", () => {
 
 describe("control public entry points", () => {
   it("should_be_callable_with_no_arguments", () => {
-    const home = mkdtempSync(join(tmpdir(), "hollr-ctl-home-"));
-    const prev = process.env.HOLLR_HOME;
-    process.env.HOLLR_HOME = home;
+    const home = mkdtempSync(join(tmpdir(), "kelbrin-ctl-home-"));
+    const prev = process.env.KELBRIN_HOME;
+    process.env.KELBRIN_HOME = home;
     try {
-      // No pidfile exists under this fresh HOLLR_HOME, so every op is a safe no-op.
+      // No pidfile exists under this fresh KELBRIN_HOME, so every op is a safe no-op.
       expect(pauseReading()).toBe(
         selectPlatform().canPauseResume
-          ? "hollr: nothing is being read"
-          : "hollr: pause is not supported on Windows — use hollr stop",
+          ? "kelbrin: nothing is being read"
+          : "kelbrin: pause is not supported on Windows — use kelbrin stop",
       );
-      expect(stopReading()).toBe("hollr: nothing is being read");
+      expect(stopReading()).toBe("kelbrin: nothing is being read");
       expect(readFileSync).toBeDefined();
     } finally {
       if (prev === undefined) {
-        delete process.env.HOLLR_HOME;
+        delete process.env.KELBRIN_HOME;
       } else {
-        process.env.HOLLR_HOME = prev;
+        process.env.KELBRIN_HOME = prev;
       }
       rmSync(home, { recursive: true, force: true });
     }

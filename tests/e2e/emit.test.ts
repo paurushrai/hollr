@@ -1,8 +1,8 @@
 /**
  * End-to-end wiring: a claude-code hook payload arriving on stdin flows through
- * `hollr emit` → adapter normalize → router → sinks, with the platform engines
+ * `kelbrin emit` → adapter normalize → router → sinks, with the platform engines
  * mocked. These tests never touch the real `~`, real audio, or the network; a
- * temp `HOLLR_HOME` holds config, mute flags, and any transcript fixtures.
+ * temp `KELBRIN_HOME` holds config, mute flags, and any transcript fixtures.
  */
 
 import {
@@ -21,7 +21,7 @@ import { claudeCode } from "../../src/adapters/claude-code.ts";
 import type { EmitDeps } from "../../src/cli/emit.ts";
 import { runEmit } from "../../src/cli/emit.ts";
 import { encodeCwd, type WebhookTarget } from "../../src/core/config.ts";
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
 
@@ -33,21 +33,21 @@ const BLOCKED_LINE = "Claude Code needs your input in my app";
 const TRANSCRIPT_SPOKEN = "All done. Tests pass.";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-e2e-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-e2e-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -66,21 +66,21 @@ function loadFixture(name: string): Record<string, unknown> {
 
 /** Writing a global config marks every cwd "configured"; overrides merge in. */
 function configureGlobal(overrides: Record<string, unknown> = {}): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(overrides));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(overrides));
 }
 
 /** Drop a `.muted` flag for `cwd` under the temp home's projects/ dir. */
 function muteProject(cwd: string): void {
-  const dir = join(hollrHomeDir, "projects");
+  const dir = join(kelbrinHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.muted`), "");
 }
 
 /** Copy the transcript fixture into the temp home and return its path. */
 function writeTranscript(): string {
-  const dest = join(hollrHomeDir, "transcript.jsonl");
-  mkdirSync(hollrHomeDir, { recursive: true });
+  const dest = join(kelbrinHomeDir, "transcript.jsonl");
+  mkdirSync(kelbrinHomeDir, { recursive: true });
   writeFileSync(dest, readFileSync(fixturePath("transcript.jsonl"), "utf8"));
   return dest;
 }
@@ -109,7 +109,7 @@ function makeDeps(stdin: string): Harness {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
   const webhooks =
-    vi.fn<(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
+    vi.fn<(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
   const deps: EmitDeps = {
     readStdin: () => Promise.resolve(stdin),
     platform: fakePlatform(),

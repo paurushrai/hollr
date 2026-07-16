@@ -1,16 +1,16 @@
 /**
- * The copilot adapter — wires GitHub Copilot CLI to hollr.
+ * The copilot adapter — wires GitHub Copilot CLI to kelbrin.
  *
  * Verified integration points (docs.github.com/en/copilot/reference/hooks-reference
  * and .../how-tos/copilot-cli/customize-copilot/use-hooks, fetched 2026-07-11):
  *   - User-level hooks live in `~/.copilot/hooks/<name>.json` (Copilot loads every
- *     `*.json` in that dir). hollr owns a dedicated `hollr.json` so it never
+ *     `*.json` in that dir). kelbrin owns a dedicated `kelbrin.json` so it never
  *     clobbers other hook files. Schema: `{ version: 1, hooks: { <event>: [...] } }`
  *     where each handler is `{ type: "command", command, matcher? }` and `command`
  *     is the cross-platform fallback. Payloads arrive on STDIN as JSON.
- *   - `agentStop` fires when the main agent finishes a turn → hollr "done".
+ *   - `agentStop` fires when the main agent finishes a turn → kelbrin "done".
  *   - `notification` fires with a `notification_type` (e.g. `agent_idle`,
- *     `permission_prompt`, `elicitation_dialog`) → hollr "blocked". A `matcher`
+ *     `permission_prompt`, `elicitation_dialog`) → kelbrin "blocked". A `matcher`
  *     regex limits it to the "needs the human" types.
  *   - Camel-case event names select the camelCase payload format: `cwd`,
  *     `transcriptPath` (agentStop only), `message` (notification). `transcriptPath`
@@ -21,7 +21,7 @@
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
  * MUST NOT throw. `wire` goes through {@link wireJsonFile} so every change is
  * previewable; `unwire` is surgical — {@link unwireJsonFile} strips only
- * hollr's own agentStop/notification entries via {@link removeHollrHooks}, so
+ * kelbrin's own agentStop/notification entries via {@link removeKelbrinHooks}, so
  * edits a user makes after wiring survive.
  */
 
@@ -29,10 +29,10 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { EventName } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
-import { unwireJsonFile, wireJsonFile } from "./diffwire.ts";
-import { removeHollrHooks } from "./hooks.ts";
+import { unwireCreatedFile, unwireJsonFile, wireJsonFile } from "./diffwire.ts";
+import { legacyCommandVariant, removeKelbrinHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "copilot";
@@ -40,7 +40,9 @@ const TITLE = "GitHub Copilot";
 const BINARY = "copilot";
 const CONFIG_DIR = ".copilot";
 const HOOKS_DIR = "hooks";
-const HOOKS_FILE = "hollr.json";
+const HOOKS_FILE = "kelbrin.json";
+/** Hooks file written by pre-rename (hollr) versions. */
+const LEGACY_HOOKS_FILE = "hollr.json";
 const LEDGER_KEY = "copilot:hooks";
 
 /** Cap on the transcript tail we read; mirrors claude-code. */
@@ -55,9 +57,9 @@ const ASSISTANT_EVENT = "assistant.message";
 /** Notification types that mean "the agent is waiting on the human". */
 const BLOCKED_MATCHER = "agent_idle|permission_prompt|elicitation_dialog";
 
-const DONE_COMMAND = "hollr emit --agent copilot --event done --payload-stdin";
+const DONE_COMMAND = "kelbrin emit --agent copilot --event done --payload-stdin";
 const BLOCKED_COMMAND =
-  "hollr emit --agent copilot --event blocked --payload-stdin";
+  "kelbrin emit --agent copilot --event blocked --payload-stdin";
 
 type JsonObject = Record<string, unknown>;
 
@@ -145,7 +147,7 @@ function assistantText(line: string): string | null {
 
 // --- wiring -----------------------------------------------------------------
 
-/** A hollr command handler for `event`, optionally filtered by `matcher`. */
+/** A kelbrin command handler for `event`, optionally filtered by `matcher`. */
 function commandHandler(command: string, matcher?: string): JsonObject {
   const handler: JsonObject = { type: HOOK_TYPE_COMMAND, command };
   if (matcher !== undefined) {
@@ -154,7 +156,7 @@ function commandHandler(command: string, matcher?: string): JsonObject {
   return handler;
 }
 
-/** Append hollr's handler for `command` unless an entry already carries it. */
+/** Append kelbrin's handler for `command` unless an entry already carries it. */
 function appendHandler(
   existing: unknown,
   command: string,
@@ -190,19 +192,27 @@ function addHooks(json: JsonObject): JsonObject {
 
 // --- surgical unwire ---------------------------------------------------------
 
-/** The two hook commands hollr's own wiring can append. */
-const HOLLR_COMMANDS: ReadonlySet<string> = new Set([DONE_COMMAND, BLOCKED_COMMAND]);
+/**
+ * The hook commands kelbrin's own wiring can append, plus the pre-rename
+ * (hollr) forms old installs wrote — both count as ours for strip/unwire.
+ */
+const KELBRIN_COMMANDS: ReadonlySet<string> = new Set([
+  DONE_COMMAND,
+  BLOCKED_COMMAND,
+  legacyCommandVariant(DONE_COMMAND),
+  legacyCommandVariant(BLOCKED_COMMAND),
+]);
 
-/** True for an agentStop/notification entry carrying one of hollr's own commands. */
-function isHollrEntry(entry: unknown): boolean {
+/** True for an agentStop/notification entry carrying one of kelbrin's own commands. */
+function isKelbrinEntry(entry: unknown): boolean {
   return (
-    isRecord(entry) && typeof entry.command === "string" && HOLLR_COMMANDS.has(entry.command)
+    isRecord(entry) && typeof entry.command === "string" && KELBRIN_COMMANDS.has(entry.command)
   );
 }
 
-/** Strip hollr's agentStop/notification entries, preserving everything else. */
+/** Strip kelbrin's agentStop/notification entries, preserving everything else. */
 function removeHooks(json: JsonObject): JsonObject {
-  return removeHollrHooks(json, [HOOK_AGENT_STOP, HOOK_NOTIFICATION], isHollrEntry);
+  return removeKelbrinHooks(json, [HOOK_AGENT_STOP, HOOK_NOTIFICATION], isKelbrinEntry);
 }
 
 // --- adapter ----------------------------------------------------------------
@@ -242,10 +252,12 @@ export const copilot: Adapter = {
 
   unwire(deps: AdapterDeps): Promise<void> {
     unwireJsonFile(hooksPath(deps), removeHooks, LEDGER_KEY);
+    // Whole-file delete is safe for the legacy file: hollr created it whole.
+    unwireCreatedFile(join(deps.home, CONFIG_DIR, HOOKS_DIR, LEGACY_HOOKS_FILE), LEDGER_KEY);
     return Promise.resolve();
   },
 
-  normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
+  normalize(raw: unknown, eventHint: EventName): KelbrinEvent | null {
     if (!isRecord(raw)) {
       return null;
     }
