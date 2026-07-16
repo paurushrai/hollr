@@ -1,19 +1,19 @@
 /**
- * The opencode adapter — wires sst's `opencode` CLI to hollr.
+ * The opencode adapter — wires sst's `opencode` CLI to kelbrin.
  *
  * VERIFIED integration (sst/opencode, docs + source read 2026-07-11):
- *   1. Unlike hollr's other adapters, opencode integrates through a JS PLUGIN
+ *   1. Unlike kelbrin's other adapters, opencode integrates through a JS PLUGIN
  *      file, not a hooks-config mutation. opencode scans `{plugin,plugins}/*.{ts,js}`
  *      under each config root and auto-loads every match at startup
  *      (packages/opencode/src/config/plugin.ts), so dropping this file at
- *      `~/.config/opencode/plugin/hollr.js` is enough — no config edit needed.
+ *      `~/.config/opencode/plugin/kelbrin.js` is enough — no config edit needed.
  *   2. A plugin is an async function receiving a context (`{ $, directory, ... }`)
  *      and returning a hooks object. Lifecycle events arrive through a single
  *      `event` hook as `{ event }` where `event.type` discriminates. The verified
  *      types (opencode.ai/docs/plugins) are `session.idle` (turn finished → done)
  *      and `permission.asked` (agent needs approval → blocked).
  *   3. The runtime is Bun; the context's `$` is Bun's shell, so the plugin shells
- *      out to `hollr emit --agent opencode --event <e> --payload-argv <json>`.
+ *      out to `kelbrin emit --agent opencode --event <e> --payload-argv <json>`.
  *      `$` escapes the interpolated JSON as a single argv, which `emit` consumes.
  *      `.quiet().nothrow()` plus a try/catch keep a notification failure from ever
  *      disrupting the coding session.
@@ -21,13 +21,13 @@
  * Read-aloud is intentionally OFF: opencode's on-disk transcript is a message +
  * part split under `~/.local/share/opencode/storage/` whose exact shape is
  * internal/undocumented and churns (session pruning, unbounded growth). Rather
- * than ship a fragile multi-file parser, hollr degrades to an announce-only
+ * than ship a fragile multi-file parser, kelbrin degrades to an announce-only
  * `done` — {@link readLastResponse} always yields `null` and never throws.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) the plugin
  * and MUST NOT throw. `wire` goes through {@link wireTextFile} so the write is
  * previewable; `unwire` is surgical — {@link unwireCreatedFile} simply deletes
- * the plugin file hollr owns outright (this is a whole file hollr creates, not
+ * the plugin file kelbrin owns outright (this is a whole file kelbrin creates, not
  * a section of a shared config, so there is nothing to preserve around it).
  */
 
@@ -35,7 +35,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { EventName } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { unwireCreatedFile, wireTextFile } from "./diffwire.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
@@ -46,27 +46,29 @@ const BINARY = "opencode";
 const LEDGER_KEY = "opencode";
 const CONFIG_SEGMENTS = [".config", "opencode"] as const;
 const PLUGIN_DIR = "plugin";
-const PLUGIN_FILE = "hollr.js";
+const PLUGIN_FILE = "kelbrin.js";
+/** Plugin file written by pre-rename (hollr) versions. */
+const LEGACY_PLUGIN_FILE = "hollr.js";
 
 /** Verified `event.type` values the plugin subscribes to. */
 const EVENT_SESSION_IDLE = "session.idle";
 const EVENT_PERMISSION_ASKED = "permission.asked";
-/** hollr event names emitted for each subscription. */
+/** kelbrin event names emitted for each subscription. */
 const EMIT_DONE: EventName = "done";
 const EMIT_BLOCKED: EventName = "blocked";
 
-/** The `hollr emit` invocation prefix the plugin shells out to. */
-const EMIT_COMMAND_PREFIX = `hollr emit --agent ${ID}`;
+/** The `kelbrin emit` invocation prefix the plugin shells out to. */
+const EMIT_COMMAND_PREFIX = `kelbrin emit --agent ${ID}`;
 
 /**
- * The plugin file hollr writes. It is DATA (a JS source string), not a module:
+ * The plugin file kelbrin writes. It is DATA (a JS source string), not a module:
  * runtime `${...}` interpolations are escaped (`\${...}`) so only the adapter's
- * own constants are substituted here. Managed by hollr and fully reversible.
+ * own constants are substituted here. Managed by kelbrin and fully reversible.
  */
-const PLUGIN_TEMPLATE = `// Managed by hollr — reversible via \`hollr uninstall\`. Do not edit by hand.
-// Bridges opencode lifecycle events to the hollr CLI (voice + desktop notifications).
+const PLUGIN_TEMPLATE = `// Managed by kelbrin — reversible via \`kelbrin uninstall\`. Do not edit by hand.
+// Bridges opencode lifecycle events to the kelbrin CLI (voice + desktop notifications).
 // opencode auto-loads .js/.ts files under ~/.config/opencode/plugin/ (and .opencode/plugin/).
-export const hollr = async ({ $, directory }) => {
+export const kelbrin = async ({ $, directory }) => {
   const emit = async (event, properties) => {
     const payload = JSON.stringify({
       cwd: directory,
@@ -152,11 +154,12 @@ export const opencode: Adapter = {
   },
 
   unwire(deps: AdapterDeps): Promise<void> {
+    unwireCreatedFile(join(configDir(deps), PLUGIN_DIR, LEGACY_PLUGIN_FILE), LEDGER_KEY);
     unwireCreatedFile(pluginPath(deps), LEDGER_KEY);
     return Promise.resolve();
   },
 
-  normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
+  normalize(raw: unknown, eventHint: EventName): KelbrinEvent | null {
     if (!isRecord(raw)) {
       return null;
     }

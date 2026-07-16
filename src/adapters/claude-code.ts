@@ -1,16 +1,16 @@
 /**
  * The claude-code adapter — the reference adapter the other agents copy. It
- * normalizes Claude Code's hook payloads into a {@link HollrEvent}, reads the
+ * normalizes Claude Code's hook payloads into a {@link KelbrinEvent}, reads the
  * last assistant turn from a JSONL transcript for read-aloud (ported from the
  * v1 Python `transcript.last_assistant_message`), and wires Claude Code's own
- * `~/.claude/settings.json` to invoke `hollr emit`.
+ * `~/.claude/settings.json` to invoke `kelbrin emit`.
  *
  * `normalize`/`readLastResponse`/`detect` run inside (or adjacent to) a hook and
  * MUST NOT throw: every read degrades defensively. `wire` goes through
  * {@link wireJsonFile}/{@link wireTextFile} so every change is previewable;
- * `unwire` is surgical — {@link unwireJsonFile} strips only hollr's own hook
- * entries via {@link removeHollrHooks}, and {@link unwireCreatedFile} deletes
- * the slash-command file hollr created — so edits a user makes after wiring
+ * `unwire` is surgical — {@link unwireJsonFile} strips only kelbrin's own hook
+ * entries via {@link removeKelbrinHooks}, and {@link unwireCreatedFile} deletes
+ * the slash-command file kelbrin created — so edits a user makes after wiring
  * survive.
  */
 
@@ -18,10 +18,10 @@ import { closeSync, fstatSync, openSync, readFileSync, readSync, statSync } from
 import { join } from "node:path";
 
 import type { EventName } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { unwireCreatedFile, unwireJsonFile, wireJsonFile, wireTextFile } from "./diffwire.ts";
-import { removeHollrHooks } from "./hooks.ts";
+import { legacyCommandVariant, removeKelbrinHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "claude-code";
@@ -30,32 +30,34 @@ const LEDGER_KEY = "claude-code:settings";
 const COMMAND_LEDGER_KEY = "claude-code:command";
 
 const COMMANDS_DIR = "commands";
-const COMMAND_FILE = "hollr.md";
+const COMMAND_FILE = "kelbrin.md";
+/** Slash-command file written by pre-rename (hollr) versions. */
+const LEGACY_COMMAND_FILE = "hollr.md";
 const HOOKS_KEY = "hooks";
 const ENABLED_PLUGINS_KEY = "enabledPlugins";
 
 /**
- * The `/hollr` custom slash command hollr owns. Claude Code substitutes
+ * The `/kelbrin` custom slash command kelbrin owns. Claude Code substitutes
  * `$ARGUMENTS` with the user's text, and the body instructs Claude to run the
- * global `hollr` CLI and relay its output. `init` is deliberately excluded — it
+ * global `kelbrin` CLI and relay its output. `init` is deliberately excluded — it
  * is an interactive terminal-only wizard, not a slash-command action. Managed by
- * hollr and fully reversible via `hollr uninstall`.
+ * kelbrin and fully reversible via `kelbrin uninstall`.
  */
 const COMMAND_TEMPLATE = `---
-description: Control hollr (pause/resume/stop/status/mute/doctor)
+description: Control kelbrin (pause/resume/stop/status/mute/doctor)
 ---
 
-Managed by hollr — reversible via \`hollr uninstall\`. Do not edit by hand.
+Managed by kelbrin — reversible via \`kelbrin uninstall\`. Do not edit by hand.
 
 Run this shell command and relay its output to the user verbatim:
 
 \`\`\`bash
-hollr $ARGUMENTS
+kelbrin $ARGUMENTS
 \`\`\`
 
 Supported actions: pause, resume, stop, status, mute, doctor.
 
-Note: \`hollr init\` is terminal-only (an interactive wizard) and is not
+Note: \`kelbrin init\` is terminal-only (an interactive wizard) and is not
 available as a slash command — run it directly in your terminal instead.
 `;
 
@@ -119,9 +121,9 @@ const SUPPRESSED_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 const STOP_COMMAND =
-  "hollr emit --agent claude-code --event done --payload-stdin";
+  "kelbrin emit --agent claude-code --event done --payload-stdin";
 const NOTIFICATION_COMMAND =
-  "hollr emit --agent claude-code --event blocked --payload-stdin";
+  "kelbrin emit --agent claude-code --event blocked --payload-stdin";
 
 /** v0.1.x Python hook scripts; a hook command referencing one is legacy. */
 const LEGACY_SCRIPT_MARKERS = ["hollr_hook.py", "announce-done.py"] as const;
@@ -146,6 +148,10 @@ function settingsPath(deps: AdapterDeps): string {
 
 function commandPath(deps: AdapterDeps): string {
   return join(deps.home, ".claude", COMMANDS_DIR, COMMAND_FILE);
+}
+
+function legacyCommandPath(deps: AdapterDeps): string {
+  return join(deps.home, ".claude", COMMANDS_DIR, LEGACY_COMMAND_FILE);
 }
 
 /** Return a shallow copy of `obj` without `key`, preserving key order. */
@@ -242,8 +248,8 @@ function entryHasCommand(entry: unknown, command: string): boolean {
   return entry.hooks.some((hook) => isRecord(hook) && hook.command === command);
 }
 
-/** Append hollr's hook entry for `command` unless it is already present. */
-function appendHollrHook(existing: unknown, command: string): unknown[] {
+/** Append kelbrin's hook entry for `command` unless it is already present. */
+function appendKelbrinHook(existing: unknown, command: string): unknown[] {
   const list = Array.isArray(existing) ? existing : [];
   if (list.some((entry) => entryHasCommand(entry, command))) {
     return list;
@@ -261,31 +267,39 @@ function addHooks(json: JsonObject): JsonObject {
     ...json,
     hooks: {
       ...hooks,
-      [HOOK_STOP]: appendHollrHook(hooks[HOOK_STOP], STOP_COMMAND),
-      [HOOK_NOTIFICATION]: appendHollrHook(hooks[HOOK_NOTIFICATION], NOTIFICATION_COMMAND),
+      [HOOK_STOP]: appendKelbrinHook(hooks[HOOK_STOP], STOP_COMMAND),
+      [HOOK_NOTIFICATION]: appendKelbrinHook(hooks[HOOK_NOTIFICATION], NOTIFICATION_COMMAND),
     },
   };
 }
 
 // --- surgical unwire ---------------------------------------------------------
 
-/** The two hook commands hollr's own wiring can append. */
-const HOLLR_COMMANDS: ReadonlySet<string> = new Set([STOP_COMMAND, NOTIFICATION_COMMAND]);
+/**
+ * The hook commands kelbrin's own wiring can append, plus the pre-rename
+ * (hollr) forms old installs wrote — both count as ours for strip/unwire.
+ */
+const KELBRIN_COMMANDS: ReadonlySet<string> = new Set([
+  STOP_COMMAND,
+  NOTIFICATION_COMMAND,
+  legacyCommandVariant(STOP_COMMAND),
+  legacyCommandVariant(NOTIFICATION_COMMAND),
+]);
 
-/** Shape-A entry (`{ hooks: [{ command }] }`) carrying one of hollr's commands. */
-function isHollrEntry(entry: unknown): boolean {
+/** Shape-A entry (`{ hooks: [{ command }] }`) carrying one of kelbrin's commands. */
+function isKelbrinEntry(entry: unknown): boolean {
   return (
     isRecord(entry) &&
     Array.isArray(entry.hooks) &&
     entry.hooks.some(
-      (hook) => isRecord(hook) && typeof hook.command === "string" && HOLLR_COMMANDS.has(hook.command),
+      (hook) => isRecord(hook) && typeof hook.command === "string" && KELBRIN_COMMANDS.has(hook.command),
     )
   );
 }
 
-/** Strip hollr's Stop/Notification hook entries, preserving everything else. */
+/** Strip kelbrin's Stop/Notification hook entries, preserving everything else. */
 function removeHooks(json: JsonObject): JsonObject {
-  return removeHollrHooks(json, [HOOK_STOP, HOOK_NOTIFICATION], isHollrEntry);
+  return removeKelbrinHooks(json, [HOOK_STOP, HOOK_NOTIFICATION], isKelbrinEntry);
 }
 
 // --- legacy v0.1.x cleanup --------------------------------------------------
@@ -360,11 +374,13 @@ function stripLegacy(json: JsonObject): JsonObject {
 }
 
 /**
- * The full settings mutation: strip any v0.1.x legacy integration, then add
- * hollr's Stop/Notification hooks. Idempotent — a fully-wired file is unchanged.
+ * The full settings mutation: strip any v0.1.x legacy integration and any
+ * kelbrin/hollr entries, then add kelbrin's Stop/Notification hooks — so a
+ * pre-rename wiring is replaced, never duplicated. Idempotent — a fully-wired
+ * file is unchanged.
  */
 function wireSettings(json: JsonObject): JsonObject {
-  return addHooks(stripLegacy(json));
+  return addHooks(removeHooks(stripLegacy(json)));
 }
 
 /** Concatenate the non-empty per-file diffs. */
@@ -383,8 +399,8 @@ function legacyMarker(rawText: string | null): string | null {
 /** Human-readable removal guidance for a detected legacy marker. */
 function legacyMessage(marker: string): string {
   return (
-    `legacy hollr v1 integration detected in settings (${marker}); ` +
-    "`hollr init` removes it as part of wiring (reversible via `hollr uninstall`)"
+    `legacy kelbrin v1 integration detected in settings (${marker}); ` +
+    "`kelbrin init` removes it as part of wiring (reversible via `kelbrin uninstall`)"
   );
 }
 
@@ -477,11 +493,12 @@ export const claudeCode: Adapter = {
 
   unwire(deps: AdapterDeps): Promise<void> {
     unwireJsonFile(settingsPath(deps), removeHooks, LEDGER_KEY);
+    unwireCreatedFile(legacyCommandPath(deps), COMMAND_LEDGER_KEY);
     unwireCreatedFile(commandPath(deps), COMMAND_LEDGER_KEY);
     return Promise.resolve();
   },
 
-  normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
+  normalize(raw: unknown, eventHint: EventName): KelbrinEvent | null {
     if (!isRecord(raw)) {
       return null;
     }

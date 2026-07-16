@@ -1,16 +1,16 @@
 /**
- * The codex adapter — wires OpenAI's `codex` CLI to hollr.
+ * The codex adapter — wires OpenAI's `codex` CLI to kelbrin.
  *
  * Two verified integration points (docs: learn.chatgpt.com/docs/config-file,
  * learn.chatgpt.com/docs/hooks):
  *   1. `~/.codex/config.toml` top-level `notify = [...]` runs a command on the
  *      `agent-turn-complete` event, passing a single JSON string as the LAST
  *      argv argument. Fields are kebab-case (`cwd`, `last-assistant-message`).
- *      hollr wires this to `hollr emit ... --payload-argv` (done + read-aloud).
+ *      kelbrin wires this to `kelbrin emit ... --payload-argv` (done + read-aloud).
  *   2. `~/.codex/hooks.json` (Claude-style) fires a `PermissionRequest` command
  *      hook, delivering its payload (snake_case `cwd`, `tool_name`) on STDIN.
- *      hollr wires this to `hollr emit ... --payload-stdin` (blocked). Codex
- *      treats exit 0 with no stdout as "no decision", so hollr's silent emit
+ *      kelbrin wires this to `kelbrin emit ... --payload-stdin` (blocked). Codex
+ *      treats exit 0 with no stdout as "no decision", so kelbrin's silent emit
  *      never allows or denies — it only announces.
  *
  * Read-aloud reads `last-assistant-message` from the notify payload DIRECTLY;
@@ -28,12 +28,12 @@
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { hollrHome } from "../core/config.ts";
+import { kelbrinHome } from "../core/config.ts";
 import type { EventName } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { unwireJsonFile, unwireTextFile, wireJsonFile, wireTextFile } from "./diffwire.ts";
-import { removeHollrHooks } from "./hooks.ts";
+import { legacyCommandVariant, removeKelbrinHooks } from "./hooks.ts";
 import type { Adapter, AdapterDeps, Detection, WireResult } from "./types.ts";
 
 const ID = "codex";
@@ -49,11 +49,11 @@ const HOOKS_LEDGER_KEY = "codex:hooks";
 const LAST_MESSAGE_FIELD = "last-assistant-message";
 
 /**
- * The `notify` argv hollr writes into config.toml. Codex appends the JSON
+ * The `notify` argv kelbrin writes into config.toml. Codex appends the JSON
  * payload as the trailing argv, which `emit`'s `--payload-argv` consumes.
  */
 const NOTIFY_ARGV = [
-  "hollr",
+  "kelbrin",
   "emit",
   "--agent",
   "codex",
@@ -64,7 +64,7 @@ const NOTIFY_ARGV = [
 
 /** hooks.json PermissionRequest command; payload arrives on stdin. */
 const BLOCKED_COMMAND =
-  "hollr emit --agent codex --event blocked --payload-stdin";
+  "kelbrin emit --agent codex --event blocked --payload-stdin";
 const HOOK_EVENT = "PermissionRequest";
 const HOOK_TYPE_COMMAND = "command";
 /** Matchers are regexes compiled against tool names; `.*` is the catch-all. */
@@ -112,9 +112,15 @@ function readFileOrNull(path: string): string | null {
 
 // --- config.toml notify patch (line-based, no TOML dependency) --------------
 
-/** The exact `notify` TOML line hollr owns. */
+/** The exact `notify` TOML line kelbrin owns. */
 function notifyLine(): string {
   const items = NOTIFY_ARGV.map((item) => `"${item}"`).join(", ");
+  return `notify = [${items}]`;
+}
+
+/** The notify line as written by pre-rename (hollr) versions — also ours. */
+function legacyNotifyLine(): string {
+  const items = NOTIFY_ARGV.map((item, index) => `"${index === 0 ? "hollr" : item}"`).join(", ");
   return `notify = [${items}]`;
 }
 
@@ -211,7 +217,7 @@ function patchNotify(original: string | null): string {
 }
 
 /**
- * Surgically strip the top-level hollr `notify` assignment, leaving every
+ * Surgically strip the top-level kelbrin `notify` assignment, leaving every
  * other key untouched. Absent notify ⇒ original returned as-is; absent file
  * ⇒ `null` (nothing to write).
  */
@@ -237,7 +243,7 @@ const NOTIFY_BACKUP_FILE = "codex-notify.bak";
 
 /** Where a pre-existing user `notify` is archived across wire → unwire. */
 function codexNotifyBackupPath(): string {
-  return join(hollrHome(), NOTIFY_BACKUP_FILE);
+  return join(kelbrinHome(), NOTIFY_BACKUP_FILE);
 }
 
 /** Read the archived notify text, or `null` when there is none. Never throws. */
@@ -284,20 +290,20 @@ function extractNotify(original: string | null): string | null {
 }
 
 /**
- * Archive the user's own pre-existing `notify` before hollr overwrites it, so
+ * Archive the user's own pre-existing `notify` before kelbrin overwrites it, so
  * `unwire` can restore it later. A stale backup (no user notify, or the
- * existing notify is already hollr's own) is cleared instead.
+ * existing notify is already kelbrin's own) is cleared instead.
  */
 function archiveExistingNotify(original: string | null): void {
   const existing = extractNotify(original);
-  if (existing !== null && existing !== notifyLine()) {
+  if (existing !== null && existing !== notifyLine() && existing !== legacyNotifyLine()) {
     writeNotifyBackup(existing);
     return;
   }
   deleteNotifyBackup();
 }
 
-/** Splice the archived text into hollr's notify range within `current`. */
+/** Splice the archived text into kelbrin's notify range within `current`. */
 function restoreNotifyRange(current: string, backup: string): string {
   const lines = current.split(NEWLINE);
   const limit = firstTableHeaderIndex(lines);
@@ -310,7 +316,7 @@ function restoreNotifyRange(current: string, backup: string): string {
 }
 
 /**
- * Unwire transform: restore the user's archived `notify` in place of hollr's
+ * Unwire transform: restore the user's archived `notify` in place of kelbrin's
  * when a backup exists (consuming and deleting it), else fall back to the
  * plain delete (`removeNotify`) — preserving today's no-backup behavior.
  */
@@ -326,17 +332,29 @@ function restoreOrRemoveNotify(current: string | null): string | null {
 
 // --- hooks.json PermissionRequest patch (Claude-style JSON) -----------------
 
-/** True when a PermissionRequest entry already carries hollr's command. */
+/**
+ * kelbrin's own blocked-hook command forms — current plus the pre-rename
+ * (hollr) one old installs wrote; both count as ours for strip/unwire.
+ */
+const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
+  BLOCKED_COMMAND,
+  legacyCommandVariant(BLOCKED_COMMAND),
+]);
+
+/** True when a PermissionRequest entry already carries kelbrin's command. */
 function entryHasCommand(entry: unknown): boolean {
   if (!isRecord(entry) || !Array.isArray(entry.hooks)) {
     return false;
   }
   return entry.hooks.some(
-    (hook) => isRecord(hook) && hook.command === BLOCKED_COMMAND,
+    (hook) =>
+      isRecord(hook) &&
+      typeof hook.command === "string" &&
+      BLOCKED_COMMANDS.has(hook.command),
   );
 }
 
-/** Append hollr's PermissionRequest entry unless it is already present. */
+/** Append kelbrin's PermissionRequest entry unless it is already present. */
 function appendPermissionEntry(existing: unknown): unknown[] {
   const list = Array.isArray(existing) ? existing : [];
   if (list.some(entryHasCommand)) {
@@ -352,7 +370,7 @@ function appendPermissionEntry(existing: unknown): unknown[] {
 }
 
 /**
- * Idempotent mutation adding hollr's PermissionRequest hook while preserving
+ * Idempotent mutation adding kelbrin's PermissionRequest hook while preserving
  * every unrelated hook event and any pre-existing PermissionRequest entries.
  */
 function addPermissionHook(json: JsonObject): JsonObject {
@@ -366,9 +384,9 @@ function addPermissionHook(json: JsonObject): JsonObject {
   };
 }
 
-/** Surgically remove only hollr's PermissionRequest entry, keeping the rest. */
+/** Surgically remove only kelbrin's PermissionRequest entry, keeping the rest. */
 function removeHooks(json: JsonObject): JsonObject {
-  return removeHollrHooks(json, [HOOK_EVENT], entryHasCommand);
+  return removeKelbrinHooks(json, [HOOK_EVENT], entryHasCommand);
 }
 
 /** Concatenate the non-empty per-file diffs. */
@@ -409,7 +427,11 @@ export const codex: Adapter = {
     const originalConfig = readFileOrNull(cfgPath);
     archiveExistingNotify(originalConfig);
     const configOp = wireTextFile(cfgPath, patchNotify(originalConfig), CONFIG_LEDGER_KEY);
-    const hooksOp = wireJsonFile(hooksPath(deps), addPermissionHook, HOOKS_LEDGER_KEY);
+    const hooksOp = wireJsonFile(
+      hooksPath(deps),
+      (json) => addPermissionHook(removeHooks(json)),
+      HOOKS_LEDGER_KEY,
+    );
     const result: WireResult = {
       changed: configOp.changed || hooksOp.changed,
       diff: joinDiffs(configOp.diff, hooksOp.diff),
@@ -426,7 +448,7 @@ export const codex: Adapter = {
     return Promise.resolve();
   },
 
-  normalize(raw: unknown, eventHint: EventName): HollrEvent | null {
+  normalize(raw: unknown, eventHint: EventName): KelbrinEvent | null {
     if (!isRecord(raw)) {
       return null;
     }
