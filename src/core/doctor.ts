@@ -1,5 +1,5 @@
 /**
- * Prerequisite checks for hollr. `checkAll()` inspects the host for the Node
+ * Prerequisite checks for kelbrin. `checkAll()` inspects the host for the Node
  * runtime, the current platform's required binaries, and any installed agent
  * adapters, returning one {@link Check} per prerequisite with a copy-paste
  * `fix` where one exists.
@@ -22,7 +22,7 @@ export interface Check {
   label: string;
   /** Whether the prerequisite is satisfied. */
   ok: boolean;
-  /** True when a failure blocks hollr; optional/informational checks are false. */
+  /** True when a failure blocks kelbrin; optional/informational checks are false. */
   required: boolean;
   /** Present/missing detail (includes the resolved path when found). */
   detail: string;

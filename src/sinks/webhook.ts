@@ -1,5 +1,5 @@
 /**
- * Webhook sink — the ONLY part of hollr that leaves the machine, so it is the
+ * Webhook sink — the ONLY part of kelbrin that leaves the machine, so it is the
  * privacy + security boundary. {@link webhookPayload} is the single serializer
  * and emits ONLY six metadata fields (never `cwd`, never `lastResponse`, never
  * any code); every provider body derives from those fields plus safe metadata
@@ -13,8 +13,8 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import type { EventName, WebhookProvider, WebhookTarget } from "../core/config.ts";
-import { hollrHome } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import { kelbrinHome } from "../core/config.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 
 const PAYLOAD_VERSION = 1 as const;
 const TIMEOUT_MS = 5000;
@@ -69,7 +69,7 @@ export interface FireWebhooksOptions {
  * THE privacy boundary: the only serializer of an event for the network. Emits
  * exactly six metadata fields and nothing derived from `cwd` or `lastResponse`.
  */
-export function webhookPayload(ev: HollrEvent): WebhookPayload {
+export function webhookPayload(ev: KelbrinEvent): WebhookPayload {
   return {
     v: PAYLOAD_VERSION,
     ts: ev.ts,
@@ -81,8 +81,8 @@ export function webhookPayload(ev: HollrEvent): WebhookPayload {
 }
 
 /** Notification title line — metadata only (`agentTitle`/`event`/`project`). */
-function titleLine(ev: HollrEvent): string {
-  return `hollr: ${ev.agentTitle} ${ev.event} in ${ev.project}`;
+function titleLine(ev: KelbrinEvent): string {
+  return `kelbrin: ${ev.agentTitle} ${ev.event} in ${ev.project}`;
 }
 
 function withoutKeys(
@@ -98,7 +98,7 @@ function withoutKeys(
   return out;
 }
 
-function formatNtfy(ev: HollrEvent, headers: Record<string, string>): WebhookRequest {
+function formatNtfy(ev: KelbrinEvent, headers: Record<string, string>): WebhookRequest {
   return {
     headers: {
       ...headers,
@@ -110,7 +110,7 @@ function formatNtfy(ev: HollrEvent, headers: Record<string, string>): WebhookReq
 }
 
 function formatPushover(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   headers: Record<string, string>,
 ): WebhookRequest {
   const form = new URLSearchParams();
@@ -133,7 +133,7 @@ function formatPushover(
   };
 }
 
-function formatSlack(ev: HollrEvent, headers: Record<string, string>): WebhookRequest {
+function formatSlack(ev: KelbrinEvent, headers: Record<string, string>): WebhookRequest {
   return {
     headers: { ...headers, "content-type": CONTENT_TYPE_JSON },
     body: JSON.stringify({ text: `${titleLine(ev)} — ${ev.summary}` }),
@@ -141,7 +141,7 @@ function formatSlack(ev: HollrEvent, headers: Record<string, string>): WebhookRe
 }
 
 function formatGeneric(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   headers: Record<string, string>,
 ): WebhookRequest {
   return {
@@ -152,7 +152,7 @@ function formatGeneric(
 
 const FORMATTERS: Record<
   WebhookProvider,
-  (ev: HollrEvent, headers: Record<string, string>) => WebhookRequest
+  (ev: KelbrinEvent, headers: Record<string, string>) => WebhookRequest
 > = {
   ntfy: formatNtfy,
   pushover: formatPushover,
@@ -203,7 +203,7 @@ async function tryOnce(
 
 /** Deliver with ONE retry on network error/timeout only; 4xx/5xx never retry. */
 async function attemptDelivery(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   target: WebhookTarget,
   req: WebhookRequest,
   fetchFn: typeof fetch,
@@ -222,7 +222,7 @@ async function attemptDelivery(
 }
 
 async function deliverTarget(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   target: WebhookTarget,
   allowHttp: boolean,
   fetchFn: typeof fetch,
@@ -246,7 +246,7 @@ async function deliverTarget(
  * single malformed sibling can never reject the batch (see {@link fireWebhooks}).
  */
 async function deliverTargetSafe(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   target: WebhookTarget,
   allowHttp: boolean,
   fetchFn: typeof fetch,
@@ -264,7 +264,7 @@ function targetMatches(target: WebhookTarget, event: EventName): boolean {
 }
 
 function logLine(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   status: string,
   name: string,
   reason?: string,
@@ -303,12 +303,12 @@ function appendLog(path: string, lines: string[]): void {
  * network error only), and appends outcome lines. Never rejects.
  */
 export async function fireWebhooks(
-  ev: HollrEvent,
+  ev: KelbrinEvent,
   targets: WebhookTarget[],
   opts: FireWebhooksOptions,
 ): Promise<void> {
   const fetchFn = opts.fetchFn ?? fetch;
-  const logPath = opts.logPath ?? join(hollrHome(), LOG_FILE);
+  const logPath = opts.logPath ?? join(kelbrinHome(), LOG_FILE);
   const matched = targets.filter((target) => targetMatches(target, ev.event));
   const lines = await Promise.all(
     matched.map((target) => deliverTargetSafe(ev, target, opts.allowHttp, fetchFn)),
@@ -329,7 +329,7 @@ export function hardenConfig(targets: WebhookTarget[]): void {
     return;
   }
   try {
-    chmodSync(join(hollrHome(), CONFIG_FILE), CONFIG_MODE);
+    chmodSync(join(kelbrinHome(), CONFIG_FILE), CONFIG_MODE);
   } catch {
     // Hardening is best-effort; a missing/locked config must not break the hook.
   }

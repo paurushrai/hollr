@@ -1,5 +1,5 @@
 /**
- * The pure heart of `hollr init`: migrate, doctor, agent-wiring, and summary
+ * The pure heart of `kelbrin init`: migrate, doctor, agent-wiring, and summary
  * steps that take an injected {@link InitIo} plus injected effects, so the whole
  * flow is driven by scripted answers in tests. @clack lives only in the `init.ts`
  * shell — never here.
@@ -18,11 +18,11 @@ import { join } from "node:path";
 import { listWiredKeys, unwireFromLedger } from "../adapters/diffwire.ts";
 import { injectReadaloud, readaloudLedgerKey } from "../adapters/instruction.ts";
 import type { Adapter, AdapterCapabilities, AdapterDeps, Detection } from "../adapters/types.ts";
-import type { Activation, HollrConfig } from "../core/config.ts";
+import type { Activation, KelbrinConfig } from "../core/config.ts";
 import {
   DEFAULTS,
   defaultOpenCommand,
-  hollrHome,
+  kelbrinHome,
   isConfigured,
   loadConfig,
   migrateHttpOptIn,
@@ -34,7 +34,7 @@ import { collectSinkConfig } from "./init-sinks.ts";
 
 const CONFIG_FILE = "config.json";
 const JSON_INDENT = 2;
-/** The only fix `hollr init` will offer to run for the user (safe, idempotent). */
+/** The only fix `kelbrin init` will offer to run for the user (safe, idempotent). */
 const XCODE_SELECT_FIX = "xcode-select --install";
 const CHECK_MARK = "✓";
 const CROSS_MARK = "✗";
@@ -47,7 +47,7 @@ export interface InitChoice<T extends string> {
 }
 
 /**
- * Everything `hollr init` needs from the outside world. The shell provides the
+ * Everything `kelbrin init` needs from the outside world. The shell provides the
  * @clack-backed implementation; tests provide a scripted fake. Kept minimal:
  * exactly the four prompt kinds the flow uses, plus an informational note.
  */
@@ -70,7 +70,7 @@ export interface InitIo {
 
 /**
  * Injected effects for the pure init flow. Config/ledger reads go straight to
- * `hollrHome()` (a temp dir in tests); only effects that would spawn or touch
+ * `kelbrinHome()` (a temp dir in tests); only effects that would spawn or touch
  * the real home (`migrate`, `enumerateVoices`, `autoRunFix`, `detectV1`) are
  * injected so tests stay hermetic.
  */
@@ -150,8 +150,8 @@ const CONFIG_MODE = 0o600;
  * applies on creation, so `hardenConfig` still chmods a pre-existing file that
  * gained secrets on a re-run.
  */
-function writeGlobalConfig(config: HollrConfig): string {
-  const home = hollrHome();
+function writeGlobalConfig(config: KelbrinConfig): string {
+  const home = kelbrinHome();
   mkdirSync(home, { recursive: true });
   const path = join(home, CONFIG_FILE);
   writeFileSync(path, `${JSON.stringify(config, null, JSON_INDENT)}\n`, {
@@ -178,7 +178,7 @@ async function stepMigrate(deps: InitDeps): Promise<void> {
     return;
   }
   const doImport = await deps.io.confirm({
-    message: "A hollr v1 config was found. Import it?",
+    message: "A kelbrin v1 config was found. Import it?",
     initialValue: true,
   });
   if (!doImport) {
@@ -240,7 +240,7 @@ function wireSummary(adapter: Adapter): string {
     parts.push("read-aloud");
   }
   if (caps.slashCommand) {
-    parts.push("/hollr command");
+    parts.push("/kelbrin command");
   }
   if (parts.length === 0) {
     return adapter.title;
@@ -259,7 +259,7 @@ async function wireAgent(deps: InitDeps, adapter: Adapter): Promise<void> {
     return;
   }
   deps.io.note(
-    `${wireSummary(adapter)}\nSilence it here anytime with \`hollr off\`.`,
+    `${wireSummary(adapter)}\nSilence it here anytime with \`kelbrin off\`.`,
     `${adapter.title} — set up`,
   );
   const seeDiff = await deps.io.confirm({
@@ -292,7 +292,7 @@ async function stepAgents(deps: InitDeps): Promise<void> {
     .filter((adapter) => isWired(wiredKeys, adapter.id))
     .map((adapter) => adapter.id);
   const selected = await deps.io.multiselect<string>({
-    message: "Select the agents hollr should wire (space to toggle)",
+    message: "Select the agents kelbrin should wire (space to toggle)",
     options,
     initialValues,
     required: false,
@@ -310,10 +310,10 @@ async function stepAgents(deps: InitDeps): Promise<void> {
   }
 }
 
-/** Ask, in plain words, whether hollr is on everywhere or only where turned on. */
+/** Ask, in plain words, whether kelbrin is on everywhere or only where turned on. */
 async function stepActivation(io: InitIo, current: Activation): Promise<Activation> {
   const choice = await io.select<Activation>({
-    message: "When should hollr speak up?",
+    message: "When should kelbrin speak up?",
     options: [
       { value: "all", label: "In every project — turn it off where you don't want it" },
       { value: "opt-in", label: "Only in projects I turn on" },
@@ -321,7 +321,7 @@ async function stepActivation(io: InitIo, current: Activation): Promise<Activati
     initialValue: current,
   });
   if (choice === "opt-in") {
-    io.note("hollr will stay quiet until you run `hollr on` inside a project.");
+    io.note("kelbrin will stay quiet until you run `kelbrin on` inside a project.");
   }
   return choice;
 }
@@ -335,7 +335,7 @@ async function stepActivation(io: InitIo, current: Activation): Promise<Activati
  */
 async function stepInjectInstructions(
   deps: InitDeps,
-  config: HollrConfig,
+  config: KelbrinConfig,
   interactive: boolean,
 ): Promise<void> {
   const wiredKeys = listWiredKeys();
@@ -358,7 +358,7 @@ async function stepInjectInstructions(
       continue;
     }
     deps.io.note(
-      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible: re-run \`hollr init\` with read-aloud off, or \`hollr uninstall\`).`,
+      `${adapter.title}: a read-aloud instruction is ready for ${path} — kept only if you confirm below (reversible: re-run \`kelbrin init\` with read-aloud off, or \`kelbrin uninstall\`).`,
     );
     const seeDiff = await deps.io.confirm({
       message: "Show exactly what changed?",
@@ -377,8 +377,8 @@ async function stepInjectInstructions(
   }
 }
 
-/** Print a summary and offer to preview with `hollr test`. */
-async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
+/** Print a summary and offer to preview with `kelbrin test`. */
+async function stepSummary(io: InitIo, config: KelbrinConfig): Promise<boolean> {
   const lines = [
     `done: ${config.events.done.mode}`,
     `blocked: ${config.events.blocked.mode}`,
@@ -387,8 +387,8 @@ async function stepSummary(io: InitIo, config: HollrConfig): Promise<boolean> {
     `quiet hours: ${config.quietHours ?? "none"}`,
     `webhooks: ${config.webhooks.length}`,
   ];
-  io.note(lines.join("\n"), "hollr is configured");
-  return io.confirm({ message: "Preview it now with `hollr test`?", initialValue: true });
+  io.note(lines.join("\n"), "kelbrin is configured");
+  return io.confirm({ message: "Preview it now with `kelbrin test`?", initialValue: true });
 }
 
 /**
@@ -422,8 +422,8 @@ async function runInitYes(deps: InitDeps): Promise<InitResult> {
 }
 
 /**
- * Run the full `hollr init` flow. Returns whether the caller should launch
- * `hollr test` and where the config was written (`null` when setup was aborted
+ * Run the full `kelbrin init` flow. Returns whether the caller should launch
+ * `kelbrin test` and where the config was written (`null` when setup was aborted
  * at the doctor gate). Errors propagate — init is interactive, not a hook.
  */
 export async function runInit(deps: InitDeps, opts: InitOptions): Promise<InitResult> {

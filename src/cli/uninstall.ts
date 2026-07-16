@@ -1,11 +1,11 @@
 /**
- * `hollr uninstall`: reverse every wired change through the ledger, then offer
- * to delete `HOLLR_HOME` (config, logs, ledger). Every wire is byte-reversible
+ * `kelbrin uninstall`: reverse every wired change through the ledger, then offer
+ * to delete `KELBRIN_HOME` (config, logs, ledger). Every wire is byte-reversible
  * because `apply()` recorded the prior file, so unwiring restores each agent's
- * config exactly — or removes a file hollr created.
+ * config exactly — or removes a file kelbrin created.
  *
  * The flow is pure over an injected {@link InitIo}, so it is scripted-answer
- * testable against a temp `HOLLR_HOME`; @clack lives only in the shell.
+ * testable against a temp `KELBRIN_HOME`; @clack lives only in the shell.
  */
 
 import { rmSync } from "node:fs";
@@ -13,7 +13,7 @@ import { rmSync } from "node:fs";
 import { listWiredKeys, unwireFromLedger } from "../adapters/diffwire.ts";
 import { byId } from "../adapters/registry.ts";
 import type { AdapterDeps } from "../adapters/types.ts";
-import { hollrHome } from "../core/config.ts";
+import { kelbrinHome } from "../core/config.ts";
 import type { InitIo } from "./init-steps.ts";
 
 const EXIT_OK = 0;
@@ -32,7 +32,7 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Reverse every wired change, then (on a second confirm) delete `HOLLR_HOME`.
+ * Reverse every wired change, then (on a second confirm) delete `KELBRIN_HOME`.
  * Declining the first confirm is a no-op that leaves everything in place.
  *
  * Reversal is routed through each matched adapter's surgical `unwire(deps)`
@@ -52,7 +52,7 @@ export async function runUninstall(io: InitIo, deps: AdapterDeps): Promise<numbe
     io.note(keys.map((key) => `- ${keyLabel(key)} (${key})`).join("\n"), "Will unwire");
   }
   const proceed = await io.confirm({
-    message: "Reverse every hollr integration?",
+    message: "Reverse every kelbrin integration?",
     initialValue: false,
   });
   if (!proceed) {
@@ -84,12 +84,12 @@ export async function runUninstall(io: InitIo, deps: AdapterDeps): Promise<numbe
     }
   }
   const deleteHome = await io.confirm({
-    message: "Also delete hollr's config, logs, and ledger (HOLLR_HOME)?",
+    message: "Also delete kelbrin's config, logs, and ledger (KELBRIN_HOME)?",
     initialValue: false,
   });
   if (deleteHome) {
-    rmSync(hollrHome(), { recursive: true, force: true });
-    io.note("Deleted HOLLR_HOME.");
+    rmSync(kelbrinHome(), { recursive: true, force: true });
+    io.note("Deleted KELBRIN_HOME.");
   }
   return EXIT_OK;
 }

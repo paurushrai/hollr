@@ -1,5 +1,5 @@
 /**
- * Normalized hollr event and the pure text helpers the router needs. An event
+ * Normalized kelbrin event and the pure text helpers the router needs. An event
  * is the agent-agnostic shape that adapters produce; the router consumes it.
  */
 
@@ -12,7 +12,7 @@ import type { EventName } from "./config.ts";
  * the speakable label (see {@link projectLabel}); `lastResponse` is the raw
  * assistant text used by readaloud, absent when the adapter cannot supply it.
  */
-export interface HollrEvent {
+export interface KelbrinEvent {
   v: 1;
   ts: string;
   agent: string;

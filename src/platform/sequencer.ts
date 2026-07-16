@@ -1,5 +1,5 @@
 /**
- * Sound-then-voice sequencer. hollr must never play a notification chime and
+ * Sound-then-voice sequencer. kelbrin must never play a notification chime and
  * speak at the same time, so it hands both intents to a detached helper
  * ({@link HELPER_PATH}) that runs the sound to completion *before* starting the
  * voice. This module only resolves argv and fires the helper — it never blocks
@@ -9,7 +9,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { hollrHome } from "../core/config.ts";
+import { kelbrinHome } from "../core/config.ts";
 import type { Platform } from "./index.ts";
 import { spawnDetached } from "./index.ts";
 
@@ -46,7 +46,7 @@ export function speakSequenced(opts: SpeakSequencedOptions): void {
   if (soundArgv === null && voiceArgv === null) {
     return;
   }
-  const pidPath = join(hollrHome(), READING_PIDFILE_NAME);
+  const pidPath = join(kelbrinHome(), READING_PIDFILE_NAME);
   const payload = JSON.stringify({ soundArgv, voiceArgv, pidPath });
   spawnDetached([NODE_BIN, HELPER_PATH, payload]);
 }

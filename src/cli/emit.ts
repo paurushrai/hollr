@@ -1,6 +1,6 @@
 /**
- * `hollr emit` entry point: parse the emit flags, resolve an optional payload
- * (stdin or argv, JSON, defensively), normalize it into a {@link HollrEvent}
+ * `kelbrin emit` entry point: parse the emit flags, resolve an optional payload
+ * (stdin or argv, JSON, defensively), normalize it into a {@link KelbrinEvent}
  * with a built-in generic normalizer, and hand it to the router.
  *
  * This runs inside a Claude Code hook, so it must never crash an agent turn:
@@ -10,9 +10,9 @@
 
 import { readaloudTempDir } from "../adapters/instruction.ts";
 import { byId } from "../adapters/registry.ts";
-import type { EventName, HollrConfig, WebhookTarget } from "../core/config.ts";
+import type { EventName, KelbrinConfig, WebhookTarget } from "../core/config.ts";
 import { loadConfig } from "../core/config.ts";
-import type { HollrEvent } from "../core/events.ts";
+import type { KelbrinEvent } from "../core/events.ts";
 import { projectLabel } from "../core/events.ts";
 import { pruneReadaloudDir } from "../core/prune.ts";
 import { route } from "../core/router.ts";
@@ -23,7 +23,7 @@ import { hardenConfig } from "../sinks/webhook.ts";
 /** Hard cap on stdin payload size; anything larger is ignored (payload = {}). */
 export const MAX_STDIN_BYTES = 1024 * 1024;
 
-/** Parsed `hollr emit` flags. `event` is unvalidated here (route tolerates it). */
+/** Parsed `kelbrin emit` flags. `event` is unvalidated here (route tolerates it). */
 export interface EmitFlags {
   agent: string;
   event: string;
@@ -35,7 +35,7 @@ export interface EmitFlags {
 /**
  * Injected dependencies so `runEmit` is unit-testable: `readStdin` supplies the
  * raw payload, and the sink trio + platform are passed straight to the router.
- * `loadConfig`/`route` are imported directly and driven via a temp `HOLLR_HOME`.
+ * `loadConfig`/`route` are imported directly and driven via a temp `KELBRIN_HOME`.
  */
 export interface EmitDeps {
   readStdin(): Promise<string>;
@@ -48,7 +48,7 @@ export interface EmitDeps {
    * sink never re-reads config. The implementation collects the returned
    * promise for {@link EmitDeps.awaitWebhooks} to drain.
    */
-  webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
+  webhooks(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean): void;
   /** Resolve when collected webhook deliveries settle (never rejects). */
   awaitWebhooks(): Promise<void>;
 }
@@ -78,7 +78,7 @@ function capTimer(ms: number): { promise: Promise<void>; cancel: () => void } {
 
 /**
  * Drain collected webhook deliveries, bounded by {@link WEBHOOK_CAP_MS}. Shared
- * with `hollr test`, which fires the same real webhook sink and must not exit
+ * with `kelbrin test`, which fires the same real webhook sink and must not exit
  * before in-flight deliveries settle. Never rejects.
  */
 export async function settleWebhooks(pending: Promise<void>): Promise<void> {
@@ -180,7 +180,7 @@ export function buildEmitEvent(
   flags: EmitFlags,
   payload: Record<string, unknown>,
   now: Date,
-): HollrEvent {
+): KelbrinEvent {
   const cwd = stringField(payload.cwd, process.cwd());
   const lastResponse =
     typeof payload.lastResponse === "string" ? payload.lastResponse : null;
@@ -206,7 +206,7 @@ function normalizeEmit(
   flags: EmitFlags,
   payload: Record<string, unknown>,
   now: Date,
-): HollrEvent | null {
+): KelbrinEvent | null {
   const adapter = byId(flags.agent);
   if (adapter === undefined) {
     return buildEmitEvent(flags, payload, now);
@@ -226,7 +226,7 @@ const READALOUD_EVENT: EventName = "done";
  * the done event. Read defensively (config is not value-validated) so a
  * malformed `events` entry can never throw out of the fast path.
  */
-function isReadaloudEvent(cfg: HollrConfig, event: EventName): boolean {
+function isReadaloudEvent(cfg: KelbrinConfig, event: EventName): boolean {
   if (event !== READALOUD_EVENT) {
     return false;
   }
@@ -243,9 +243,9 @@ function isReadaloudEvent(cfg: HollrConfig, event: EventName): boolean {
  */
 async function hydrateLastResponse(
   flags: EmitFlags,
-  event: HollrEvent,
+  event: KelbrinEvent,
   payload: Record<string, unknown>,
-  cfg: HollrConfig,
+  cfg: KelbrinConfig,
 ): Promise<void> {
   if (!isReadaloudEvent(cfg, event.event)) {
     return;

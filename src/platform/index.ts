@@ -1,5 +1,5 @@
 /**
- * Platform abstraction: each OS engine turns hollr's intent (speak, notify,
+ * Platform abstraction: each OS engine turns kelbrin's intent (speak, notify,
  * play a sound, list voices) into a concrete argv array that a caller runs via
  * {@link spawnDetached}. Engines never spawn or touch a shell themselves — they
  * only build argv, which keeps injection impossible (no `shell: true`, no string

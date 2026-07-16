@@ -1,5 +1,5 @@
 /**
- * `hollr quiet [duration|off]`: a global, self-expiring pause written to the
+ * `kelbrin quiet [duration|off]`: a global, self-expiring pause written to the
  * `quiet-until` marker the router reads (`quietActive`). Bare `quiet` is
  * indefinite (until `quiet off`); `quiet 30m` auto-resumes after the duration;
  * `quiet off` resumes now. An unparseable duration surfaces (non-zero exit) so
@@ -49,12 +49,12 @@ export function runQuiet(args: string[], now: Date): number {
   const arg = args[0];
   if (arg === "off") {
     clearMarker();
-    process.stdout.write("hollr: back on\n");
+    process.stdout.write("kelbrin: back on\n");
     return EXIT_OK;
   }
   if (arg === undefined) {
     writeMarker(QUIET_INDEFINITE);
-    process.stdout.write("hollr: quiet until you run `hollr quiet off`\n");
+    process.stdout.write("kelbrin: quiet until you run `kelbrin quiet off`\n");
     return EXIT_OK;
   }
   const ms = parseDuration(arg);
@@ -62,6 +62,6 @@ export function runQuiet(args: string[], now: Date): number {
     throw new Error(`could not understand '${arg}' — try e.g. 30m, 1h, or 90s`);
   }
   writeMarker(String(now.getTime() + ms));
-  process.stdout.write(`hollr: quiet for ${arg}\n`);
+  process.stdout.write(`kelbrin: quiet for ${arg}\n`);
   return EXIT_OK;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * hollr CLI entry point: a hand-rolled subcommand dispatch (no arg-parse
+ * kelbrin CLI entry point: a hand-rolled subcommand dispatch (no arg-parse
  * dependency). `run(argv)` returns the process exit code; `main(argv)` adds the
  * top-level error boundary, and the direct-execution guard turns that into
  * `process.exit`. The `emit` path is wrapped (`runEmitSafe`) so any throw
@@ -11,6 +11,7 @@
 
 import { spawn, type StdioOptions } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { adapters } from "./adapters/registry.ts";
@@ -26,7 +27,8 @@ import type { TestDeps } from "./cli/test.ts";
 import { runTest } from "./cli/test.ts";
 import { runStatus } from "./cli/status.ts";
 import { runQuiet } from "./cli/quiet.ts";
-import type { HollrEvent } from "./core/events.ts";
+import type { KelbrinEvent } from "./core/events.ts";
+import { migrateLegacyHome } from "./core/config.ts";
 import type { WebhookTarget } from "./core/config.ts";
 import type { Platform } from "./platform/index.ts";
 import {
@@ -41,9 +43,9 @@ import { fireWebhooks } from "./sinks/webhook.ts";
  * Replaced at build time by tsup's `define` with the version from package.json.
  * At test time vitest injects the same value via its `define` config.
  */
-declare const __HOLLR_VERSION__: string;
+declare const __KELBRIN_VERSION__: string;
 
-const CLI_NAME = "hollr";
+const CLI_NAME = "kelbrin";
 
 const EXIT_OK = 0;
 const EXIT_REQUIRED_FAIL = 1;
@@ -52,15 +54,15 @@ const EXIT_ERROR = 1;
 const EXIT_USAGE = 2;
 
 const USAGE =
-  "usage: hollr <init|uninstall|emit|run|test|status|on|off|quiet|pause|resume|stop|mute|doctor> " +
+  "usage: kelbrin <init|uninstall|emit|run|test|status|on|off|quiet|pause|resume|stop|mute|doctor> " +
   "[options] (--version for version)";
 
 const MARK_OK = "✔";
 const MARK_MISSING = "✖";
 
-export const VERSION: string = __HOLLR_VERSION__;
+export const VERSION: string = __KELBRIN_VERSION__;
 
-/** Human-readable version banner, e.g. `hollr 0.2.0`. */
+/** Human-readable version banner, e.g. `kelbrin 0.2.0`. */
 export function getVersionString(): string {
   return `${CLI_NAME} ${VERSION}`;
 }
@@ -70,7 +72,7 @@ interface RealSinks {
   platform: Platform;
   speak: typeof speakSequenced;
   notify(argv: string[]): void;
-  webhooks(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean): void;
+  webhooks(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean): void;
   awaitWebhooks(): Promise<void>;
 }
 
@@ -102,7 +104,7 @@ function realEmitDeps(): EmitDeps {
 
 /**
  * Spawn a non-detached child that owns the terminal. Plain mode inherits all
- * stdio; stream mode pipes stdout so `hollr run` can tee + parse it. NEVER uses
+ * stdio; stream mode pipes stdout so `kelbrin run` can tee + parse it. NEVER uses
  * a shell — argv is passed as an array, so no injection or word-splitting.
  */
 function realSpawn(command: string, args: string[], mode: StdioMode): WrapperChild {
@@ -112,7 +114,7 @@ function realSpawn(command: string, args: string[], mode: StdioMode): WrapperChi
 }
 
 /**
- * Bounded stream-drain grace timer for `hollr run`. `unref` lets the process
+ * Bounded stream-drain grace timer for `kelbrin run`. `unref` lets the process
  * exit the instant the drain wins, and guarantees the timer itself never keeps
  * the event loop alive.
  */
@@ -122,7 +124,7 @@ function realDelay(ms: number): Promise<void> {
   });
 }
 
-/** Real `hollr run` dependencies: the live spawn + sinks + stdout tee + clock. */
+/** Real `kelbrin run` dependencies: the live spawn + sinks + stdout tee + clock. */
 function realWrapperDeps(): WrapperDeps {
   return {
     spawn: realSpawn,
@@ -136,7 +138,7 @@ function realWrapperDeps(): WrapperDeps {
   };
 }
 
-/** Real, production `hollr test` dependencies: the live sinks + cwd + stdout. */
+/** Real, production `kelbrin test` dependencies: the live sinks + cwd + stdout. */
 function realTestDeps(): TestDeps {
   return {
     cwd: process.cwd(),
@@ -198,7 +200,7 @@ function printCheck(check: Check): void {
   }
 }
 
-/** Dispatch `hollr <cmd> [...]`; returns the process exit code. */
+/** Dispatch `kelbrin <cmd> [...]`; returns the process exit code. */
 export async function run(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   switch (command) {
@@ -257,11 +259,36 @@ export async function run(argv: string[]): Promise<number> {
  */
 export async function main(argv: string[]): Promise<number> {
   try {
+    migrateLegacyHome();
     return await run(argv);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${CLI_NAME}: ${message}\n`);
     return EXIT_ERROR;
+  }
+}
+
+/** Old bin name kept as an alias so already-wired hooks keep firing. */
+const LEGACY_BIN_NAME = "hollr";
+
+const RENAME_NOTICE =
+  "hollr is now kelbrin. This alias keeps existing hooks working; " +
+  "install the new package (npm i -g kelbrin && npm rm -g hollr-cli) " +
+  "and re-run `kelbrin init` to update your wiring.";
+
+/**
+ * One-line rename notice when the CLI is invoked through the legacy `hollr`
+ * bin alias. stderr only — emit payloads on stdout must stay clean. Windows
+ * cmd shims pass the real module path as argv[1], so the notice is
+ * best-effort there.
+ */
+export function printRenameNoticeIfLegacyInvocation(
+  argv: readonly string[],
+  stderr: (line: string) => void,
+): void {
+  const entry = argv[1];
+  if (entry !== undefined && basename(entry) === LEGACY_BIN_NAME) {
+    stderr(`${RENAME_NOTICE}\n`);
   }
 }
 
@@ -299,6 +326,9 @@ function isExecutedDirectly(): boolean {
 }
 
 if (isExecutedDirectly()) {
+  printRenameNoticeIfLegacyInvocation(process.argv, (line) => {
+    process.stderr.write(line);
+  });
   main(process.argv.slice(2))
     .then((code) => {
       process.exit(code);

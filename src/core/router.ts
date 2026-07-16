@@ -1,5 +1,5 @@
 /**
- * Mode router: turns one normalized {@link HollrEvent} into sink calls (speak,
+ * Mode router: turns one normalized {@link KelbrinEvent} into sink calls (speak,
  * desktop notify, webhooks) according to the effective config. Runs inside a
  * Claude Code hook, so the whole body is crash-proof — any throw returns 0.
  */
@@ -7,9 +7,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { HollrConfig } from "./config.ts";
+import type { KelbrinConfig } from "./config.ts";
 import {
-  hollrHome,
+  kelbrinHome,
   inQuietHours,
   isConfigured,
   isMuted,
@@ -17,7 +17,7 @@ import {
   quietActive,
 } from "./config.ts";
 import type { EventName } from "./config.ts";
-import type { HollrEvent } from "./events.ts";
+import type { KelbrinEvent } from "./events.ts";
 import { prepareSpeechText } from "./events.ts";
 import type { Platform } from "../platform/index.ts";
 import type { speakSequenced } from "../platform/sequencer.ts";
@@ -27,11 +27,11 @@ export interface RouterDeps {
   platform: Platform;
   speak: typeof speakSequenced;
   notify(argv: string[]): void;
-  webhooks(ev: HollrEvent): void;
+  webhooks(ev: KelbrinEvent): void;
 }
 
-const NOTIFY_TITLE = "hollr";
-const HINT_MESSAGE = "hollr: not configured — run hollr init\n";
+const NOTIFY_TITLE = "kelbrin";
+const HINT_MESSAGE = "kelbrin: not configured — run kelbrin init\n";
 const HINT_MARKER = "hint-shown";
 const EVENTS_LOG = "events.log";
 const EVENTS_LOG_CAP = 50;
@@ -48,8 +48,8 @@ const EXIT_HINT = 1;
 
 /** Route `ev`; returns a process exit code (1 only for the once-only hint). */
 export function route(
-  ev: HollrEvent,
-  cfg: HollrConfig,
+  ev: KelbrinEvent,
+  cfg: KelbrinConfig,
   deps: RouterDeps,
   now: Date,
 ): number {
@@ -80,12 +80,12 @@ export function route(
 
 /** Print the setup hint exactly once (marker file), returning its exit code. */
 function showHintOnce(): number {
-  const marker = join(hollrHome(), HINT_MARKER);
+  const marker = join(kelbrinHome(), HINT_MARKER);
   if (existsSync(marker)) {
     return EXIT_OK;
   }
   try {
-    mkdirSync(hollrHome(), { recursive: true });
+    mkdirSync(kelbrinHome(), { recursive: true });
     writeFileSync(marker, "");
   } catch {
     return EXIT_OK;
@@ -96,8 +96,8 @@ function showHintOnce(): number {
 
 /** Fire every sink for a configured, non-muted event. */
 function dispatchRouted(
-  ev: HollrEvent,
-  cfg: HollrConfig,
+  ev: KelbrinEvent,
+  cfg: KelbrinConfig,
   deps: RouterDeps,
   now: Date,
 ): void {
@@ -109,8 +109,8 @@ function dispatchRouted(
 
 /** Webhooks fire for every routed event unless quiet-hours suppression is on. */
 function fireWebhooks(
-  ev: HollrEvent,
-  cfg: HollrConfig,
+  ev: KelbrinEvent,
+  cfg: KelbrinConfig,
   deps: RouterDeps,
   quiet: boolean,
 ): void {
@@ -122,8 +122,8 @@ function fireWebhooks(
 
 /** Speak / notify per mode; silent or unknown modes fire no local sinks. */
 function fireSinks(
-  ev: HollrEvent,
-  cfg: HollrConfig,
+  ev: KelbrinEvent,
+  cfg: KelbrinConfig,
   deps: RouterDeps,
   mode: string | undefined,
   quiet: boolean,
@@ -146,7 +146,7 @@ function fireSinks(
 }
 
 /** Readaloud speaks the prepared last response, or the announce line if empty. */
-function readaloudSpeech(ev: HollrEvent, cfg: HollrConfig, line: string): string {
+function readaloudSpeech(ev: KelbrinEvent, cfg: KelbrinConfig, line: string): string {
   const raw = ev.lastResponse;
   if (raw === null || raw === undefined || raw.length === 0) {
     return line;
@@ -155,7 +155,7 @@ function readaloudSpeech(ev: HollrEvent, cfg: HollrConfig, line: string): string
   return prepared.length > 0 ? prepared : line;
 }
 
-function speak(deps: RouterDeps, cfg: HollrConfig, text: string): void {
+function speak(deps: RouterDeps, cfg: KelbrinConfig, text: string): void {
   deps.speak({
     text,
     voice: cfg.voice.name,
@@ -173,7 +173,7 @@ function desktopNotify(deps: RouterDeps, line: string): void {
 }
 
 /** Config is not value-validated, so read the mode defensively. */
-function effectiveMode(cfg: HollrConfig, event: EventName): string | undefined {
+function effectiveMode(cfg: KelbrinConfig, event: EventName): string | undefined {
   const mode = readMode(cfg, event);
   if (mode === "readaloud" && event !== "done") {
     return "announce"; // readaloud only makes sense once the turn is over
@@ -181,7 +181,7 @@ function effectiveMode(cfg: HollrConfig, event: EventName): string | undefined {
   return mode;
 }
 
-function readMode(cfg: HollrConfig, event: EventName): string | undefined {
+function readMode(cfg: KelbrinConfig, event: EventName): string | undefined {
   const events: unknown = cfg.events;
   if (!isRecord(events)) {
     return undefined;
@@ -198,9 +198,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Append one capped line to events.log; never throws out of the router. */
-function appendEventLog(ev: HollrEvent): void {
+function appendEventLog(ev: KelbrinEvent): void {
   try {
-    const home = hollrHome();
+    const home = kelbrinHome();
     const path = join(home, EVENTS_LOG);
     const line = `${ev.ts} ${ev.agent} ${ev.event} ${ev.project}`;
     mkdirSync(home, { recursive: true });

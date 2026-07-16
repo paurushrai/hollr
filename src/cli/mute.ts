@@ -1,5 +1,5 @@
 /**
- * `hollr mute [on|off]`: toggle a per-project mute flag file that the router
+ * `kelbrin mute [on|off]`: toggle a per-project mute flag file that the router
  * checks (`isMuted`) to stay fully silent for a project. `on` mutes, `off`
  * unmutes, and a bare `mute` toggles. Unmuting is best-effort (an already-absent
  * flag is success). Muting, however, must NOT report success if the flag was
@@ -10,7 +10,7 @@
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { encodeCwd, hollrHome, isMuted } from "../core/config.ts";
+import { encodeCwd, kelbrinHome, isMuted } from "../core/config.ts";
 import { projectLabel } from "../core/events.ts";
 
 const PROJECTS_DIR = "projects";
@@ -19,11 +19,11 @@ const ENABLED_SUFFIX = ".enabled";
 const EXIT_OK = 0;
 
 function muteFlagPath(cwd: string): string {
-  return join(hollrHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${MUTED_SUFFIX}`);
+  return join(kelbrinHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${MUTED_SUFFIX}`);
 }
 
 function enabledFlagPath(cwd: string): string {
-  return join(hollrHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
+  return join(kelbrinHome(), PROJECTS_DIR, `${encodeCwd(cwd)}${ENABLED_SUFFIX}`);
 }
 
 /** Desired mute state: `on` → true, `off` → false, anything else → toggle. */
@@ -74,11 +74,11 @@ export function setProjectState(on: boolean, cwd: string): number {
     removeFlag(enabledPath);
   }
   const label = projectLabel(cwd);
-  process.stdout.write(`hollr: ${on ? "on for" : "off for"} ${label}\n`);
+  process.stdout.write(`kelbrin: ${on ? "on for" : "off for"} ${label}\n`);
   return EXIT_OK;
 }
 
-/** Legacy `hollr mute [on|off]`: maps onto {@link setProjectState}. */
+/** Legacy `kelbrin mute [on|off]`: maps onto {@link setProjectState}. */
 export function runMute(args: string[], cwd: string): number {
   const muted = desiredState(args[0], cwd);
   return setProjectState(!muted, cwd);
