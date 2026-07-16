@@ -12,6 +12,6 @@ export default defineConfig({
   format: ["esm"],
   clean: true,
   define: {
-    __HOLLR_VERSION__: JSON.stringify(packageJson.version),
+    __KELBRIN_VERSION__: JSON.stringify(packageJson.version),
   },
 });
