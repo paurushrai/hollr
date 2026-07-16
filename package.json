@@ -1,7 +1,7 @@
 {
   "name": "kelbrin",
-  "version": "0.5.0",
-  "description": "Voice, desktop, and webhook notifications for CLI coding agents (Claude Code, Codex, Gemini, Copilot, Cursor & more) \u2014 calls out the moment your agent finishes or needs you.",
+  "version": "0.6.0",
+  "description": "Voice, desktop, and webhook notifications for CLI coding agents (Claude Code, Codex, Gemini, Copilot, Cursor & more) — calls out the moment your agent finishes or needs you.",
   "keywords": [
     "cli",
     "notifications",
