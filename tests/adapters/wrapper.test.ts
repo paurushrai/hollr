@@ -19,7 +19,7 @@ describe("wrapper pseudo-adapter", () => {
   it("should_no_op_wire_with_usage_instructions_and_no_change", async () => {
     const result = await wrapper.wire(deps);
     expect(result.changed).toBe(false);
-    expect(result.warnings.join(" ")).toContain("hollr run");
+    expect(result.warnings.join(" ")).toContain("kelbrin run");
   });
 
   it("should_no_op_unwire", async () => {

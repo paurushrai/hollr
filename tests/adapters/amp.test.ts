@@ -9,8 +9,8 @@ import type { AdapterDeps } from "../../src/adapters/types.ts";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 /** `which` fake that resolves nothing (amp not on PATH). */
 const whichNone = (): string | null => null;
@@ -32,19 +32,19 @@ function settingsPath(): string {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-amp-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-amp-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -119,7 +119,7 @@ describe("amp.wire (instructions-only fallback)", () => {
     expect(result.warnings.length).toBeGreaterThan(0);
     const text = result.warnings.join("\n");
     expect(text).toContain("amp.notifications");
-    expect(text).toContain("hollr run");
+    expect(text).toContain("kelbrin run");
   });
 });
 

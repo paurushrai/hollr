@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HollrConfig } from "../../src/core/config.ts";
+import type { KelbrinConfig } from "../../src/core/config.ts";
 import { DEFAULTS, encodeCwd, loadConfig, quietUntilPath } from "../../src/core/config.ts";
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import { projectLabel } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { RouterDeps } from "../../src/core/router.ts";
@@ -17,50 +17,50 @@ const NOW = new Date(2026, 6, 11, 12, 0);
 const QUIET_NOW = new Date(2026, 6, 11, 23, 0);
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-router-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-router-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
 function writeGlobalRaw(raw: string): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), raw);
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), raw);
 }
 
-function configure(overrides: Record<string, unknown> = {}): HollrConfig {
+function configure(overrides: Record<string, unknown> = {}): KelbrinConfig {
   writeGlobalRaw(JSON.stringify(overrides));
   return loadConfig(CWD);
 }
 
 function touchMute(cwd: string): void {
-  const dir = join(hollrHomeDir, "projects");
+  const dir = join(kelbrinHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.muted`), "");
 }
 
 function touchEnabled(cwd: string): void {
-  const dir = join(hollrHomeDir, "projects");
+  const dir = join(kelbrinHomeDir, "projects");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${encodeCwd(cwd)}.enabled`), "");
 }
 
 function setQuietUntil(value: string): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
+  mkdirSync(kelbrinHomeDir, { recursive: true });
   writeFileSync(quietUntilPath(), value);
 }
 
@@ -97,11 +97,11 @@ interface Mocks {
 function makeDeps(platform: Platform = fakePlatform()): Mocks {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
-  const webhooks = vi.fn<(ev: HollrEvent) => void>();
+  const webhooks = vi.fn<(ev: KelbrinEvent) => void>();
   return { deps: { platform, speak, notify, webhooks }, speak, notify, webhooks };
 }
 
-function makeEvent(overrides: Partial<HollrEvent> = {}): HollrEvent {
+function makeEvent(overrides: Partial<KelbrinEvent> = {}): KelbrinEvent {
   return {
     v: 1,
     ts: "2026-07-11T12:00:00.000Z",
@@ -133,7 +133,7 @@ describe("route: ported v1 hook behaviors", () => {
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0]?.[0]).toEqual([
       "notify",
-      "hollr",
+      "kelbrin",
       "Claude Code response is ready in my app",
     ]);
   });
@@ -154,8 +154,8 @@ describe("route: ported v1 hook behaviors", () => {
     expect(first).toBe(1);
     expect(second).toBe(0);
     expect(stderr).toHaveBeenCalledTimes(1);
-    expect(String(stderr.mock.calls[0]?.[0])).toContain("hollr: not configured");
-    expect(existsSync(join(hollrHomeDir, "hint-shown"))).toBe(true);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain("kelbrin: not configured");
+    expect(existsSync(join(kelbrinHomeDir, "hint-shown"))).toBe(true);
     expect(speak).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
     expect(webhooks).not.toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe("route: error events and webhooks", () => {
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0]?.[0]).toEqual([
       "notify",
-      "hollr",
+      "kelbrin",
       "Claude Code hit an error in my app",
     ]);
   });
@@ -362,7 +362,7 @@ describe("route: events.log", () => {
     for (let i = 0; i < 60; i += 1) {
       route(makeEvent(), cfg, deps, NOW);
     }
-    const logPath = join(hollrHomeDir, "events.log");
+    const logPath = join(kelbrinHomeDir, "events.log");
     const lines = readFileSync(logPath, "utf8").split("\n").filter((l) => l.length > 0);
     expect(lines).toHaveLength(50);
     expect(lines[lines.length - 1]).toBe(

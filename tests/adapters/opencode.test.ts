@@ -26,8 +26,8 @@ const LEDGER_KEY = "opencode";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 const whichNone = (): string | null => null;
 const whichOpencode = (bin: string): string | null =>
@@ -38,24 +38,24 @@ function deps(which: (bin: string) => string | null = whichNone): AdapterDeps {
 }
 
 function pluginPath(): string {
-  return join(home, ".config", "opencode", "plugin", "hollr.js");
+  return join(home, ".config", "opencode", "plugin", "kelbrin.js");
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-opencode-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-opencode-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
   unwireFromLedger(LEDGER_KEY);
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -63,7 +63,7 @@ afterEach(() => {
 describe("opencode.capabilities", () => {
   it("should_advertise_done_blocked_but_not_readaloud_or_slash_command", () => {
     // Read-aloud is disabled: opencode's storage (message + part split) is an
-    // undocumented internal shape with known churn, so hollr degrades to announce.
+    // undocumented internal shape with known churn, so kelbrin degrades to announce.
     expect(opencode.capabilities).toEqual({
       done: true,
       blocked: true,
@@ -118,19 +118,19 @@ describe("opencode.readLastResponse", () => {
 });
 
 describe("opencode.wire plugin template", () => {
-  it("should_write_a_hollr_js_plugin_that_subscribes_to_the_verified_events", async () => {
+  it("should_write_a_kelbrin_js_plugin_that_subscribes_to_the_verified_events", async () => {
     const result = await opencode.wire(deps());
     expect(result.changed).toBe(true);
     expect(existsSync(pluginPath())).toBe(true);
     const plugin = readFileSync(pluginPath(), "utf8");
     // Plugin module export shape (opencode Plugin: async fn returning hooks).
-    expect(plugin).toContain("export const hollr");
+    expect(plugin).toContain("export const kelbrin");
     expect(plugin).toContain("event: async ({ event })");
     // Verified event subscriptions.
     expect(plugin).toContain('event.type === "session.idle"');
     expect(plugin).toContain('event.type === "permission.asked"');
-    // Shells out to the hollr CLI for both mapped events.
-    expect(plugin).toContain("hollr emit --agent opencode");
+    // Shells out to the kelbrin CLI for both mapped events.
+    expect(plugin).toContain("kelbrin emit --agent opencode");
     expect(plugin).toContain("--event ${event} --payload-argv ${payload}");
     expect(plugin).toContain('emit("done"');
     expect(plugin).toContain('emit("blocked"');
@@ -157,13 +157,30 @@ describe("opencode.unwire", () => {
 
   it("should_delete_a_pre_existing_plugin_file_outright_not_restore_it", async () => {
     // unwireCreatedFile always deletes the file it owns: the plugin is a whole
-    // file hollr owns outright, not a section of a shared config, so unwire
+    // file kelbrin owns outright, not a section of a shared config, so unwire
     // does not attempt to restore whatever (if anything) was there before.
     mkdirSync(join(home, ".config", "opencode", "plugin"), { recursive: true });
     writeFileSync(pluginPath(), "export const mine = async () => ({});\n", "utf8");
     await opencode.wire(deps());
     await opencode.unwire(deps());
     expect(existsSync(pluginPath())).toBe(false);
+  });
+});
+
+describe("opencode hollr→kelbrin rename compat", () => {
+  function legacyPluginPath(): string {
+    return join(home, ".config", "opencode", "plugin", "hollr.js");
+  }
+
+  it("should_delete_the_legacy_hollr_plugin_file_on_unwire", async () => {
+    mkdirSync(join(home, ".config", "opencode", "plugin"), { recursive: true });
+    writeFileSync(
+      legacyPluginPath(),
+      "export const hollr = async () => ({});\n",
+      "utf8",
+    );
+    await opencode.unwire(deps());
+    expect(existsSync(legacyPluginPath())).toBe(false);
   });
 });
 

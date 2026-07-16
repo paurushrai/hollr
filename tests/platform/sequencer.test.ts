@@ -21,22 +21,22 @@ interface HelperPayload {
 const detachedMock = vi.mocked(spawnDetached);
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-seq-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-seq-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
   detachedMock.mockReset();
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -75,7 +75,7 @@ describe("speakSequenced", () => {
     const payload = lastPayload();
     expect(payload.soundArgv).toEqual(["afplay", "/System/Library/Sounds/Glass.aiff"]);
     expect(payload.voiceArgv).toEqual(["say", "-v", "Alex", "-r", "200", "--", "all done"]);
-    expect(payload.pidPath).toBe(join(hollrHomeDir, "reading.pid"));
+    expect(payload.pidPath).toBe(join(kelbrinHomeDir, "reading.pid"));
   });
 
   it("should_pass_null_sound_argv_when_sound_is_null", () => {

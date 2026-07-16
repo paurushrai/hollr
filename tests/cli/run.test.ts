@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
 import type { WebhookTarget } from "../../src/core/config.ts";
@@ -22,29 +22,29 @@ const FIXTURE_PATH = join(
 );
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-run-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-run-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
 function configureGlobal(overrides: Record<string, unknown> = {}): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(overrides));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(overrides));
 }
 
 function fakePlatform(): Platform {
@@ -113,7 +113,7 @@ function makeHarness(): Harness {
     speak,
     notify,
     webhooks: vi.fn<
-      (ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void
+      (ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean) => void
     >(),
     awaitWebhooks: () => Promise.resolve(),
     // Default: the grace timer never fires, so the stdout drain always wins the
@@ -193,7 +193,7 @@ describe("runWrapper plain mode exit mapping", () => {
     const code = await promise;
     expect(code).toBe(0);
     expect(spokenText(speak)).toBe("agy response is ready in my app");
-    const logLine = readFileSync(join(hollrHomeDir, "events.log"), "utf8").trim();
+    const logLine = readFileSync(join(kelbrinHomeDir, "events.log"), "utf8").trim();
     expect(logLine).toContain("wrapper done my app");
   });
 
@@ -221,7 +221,7 @@ describe("runWrapper plain mode exit mapping", () => {
 
   it("should_not_fire_local_sinks_when_muted", async () => {
     configureGlobal();
-    const projects = join(hollrHomeDir, "projects");
+    const projects = join(kelbrinHomeDir, "projects");
     mkdirSync(projects, { recursive: true });
     writeFileSync(join(projects, `${encodeCwd(CWD)}.muted`), "");
     const { deps, speak, notify, child } = makeHarness();

@@ -10,24 +10,24 @@ import { run } from "../src/index.ts";
 const packageJson = JSON.parse(
   readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
 ) as { version: string };
-const BANNER = `hollr ${packageJson.version}`;
+const BANNER = `kelbrin ${packageJson.version}`;
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-cli-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-cli-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -76,12 +76,12 @@ describe("run: unknown / absent command", () => {
 
 describe("run: control commands", () => {
   it.each(["pause", "resume", "stop"])(
-    "should_print_a_hollr_line_and_return_0_for_%s",
+    "should_print_a_kelbrin_line_and_return_0_for_%s",
     async (cmd) => {
       const out = captureStdout();
       const code = await run([cmd]);
       expect(code).toBe(0);
-      expect(stdoutText(out)).toContain("hollr:");
+      expect(stdoutText(out)).toContain("kelbrin:");
     },
   );
 });

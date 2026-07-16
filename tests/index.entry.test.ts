@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isEntryModule } from "../src/index.ts";
+import { isEntryModule, printRenameNoticeIfLegacyInvocation } from "../src/index.ts";
 
-const MODULE = "/pkg/lib/node_modules/hollr/dist/index.js";
-const SYMLINK = "/usr/local/bin/hollr";
+const MODULE = "/pkg/lib/node_modules/kelbrin/dist/index.js";
+const SYMLINK = "/usr/local/bin/kelbrin";
 
 describe("isEntryModule", () => {
   it("should_return_false_when_entry_is_undefined", () => {
@@ -36,5 +36,26 @@ describe("isEntryModule", () => {
       throw new Error("ENOENT");
     });
     expect(isEntryModule(SYMLINK, MODULE, resolve)).toBe(false);
+  });
+});
+
+describe("printRenameNoticeIfLegacyInvocation", () => {
+  it("should_print_rename_notice_when_invoked_via_the_hollr_alias", () => {
+    const stderr = vi.fn();
+    printRenameNoticeIfLegacyInvocation(["/usr/bin/node", "/usr/local/bin/hollr"], stderr);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(stderr.mock.calls[0]?.[0]).toContain("hollr is now kelbrin");
+  });
+
+  it("should_stay_silent_when_invoked_as_kelbrin", () => {
+    const stderr = vi.fn();
+    printRenameNoticeIfLegacyInvocation(["/usr/bin/node", SYMLINK], stderr);
+    expect(stderr).not.toHaveBeenCalled();
+  });
+
+  it("should_stay_silent_when_argv_has_no_script_path", () => {
+    const stderr = vi.fn();
+    printRenameNoticeIfLegacyInvocation(["/usr/bin/node"], stderr);
+    expect(stderr).not.toHaveBeenCalled();
   });
 });

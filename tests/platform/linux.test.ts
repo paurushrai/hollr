@@ -99,10 +99,10 @@ describe("LinuxPlatform.notifyArgv", () => {
   const engine = platform([]);
 
   it("should_build_notify_send_argv", () => {
-    expect(engine.notifyArgv("hollr", "response ready")).toEqual([
+    expect(engine.notifyArgv("kelbrin", "response ready")).toEqual([
       "notify-send",
-      "--app-name=hollr",
-      "hollr",
+      "--app-name=kelbrin",
+      "kelbrin",
       "response ready",
     ]);
   });

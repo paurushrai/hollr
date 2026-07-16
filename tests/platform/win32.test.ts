@@ -26,16 +26,16 @@ let previousHome: string | undefined;
 let home: string;
 
 beforeEach(() => {
-  previousHome = process.env.HOLLR_HOME;
-  home = mkdtempSync(join(tmpdir(), "hollr-win32-"));
-  process.env.HOLLR_HOME = home;
+  previousHome = process.env.KELBRIN_HOME;
+  home = mkdtempSync(join(tmpdir(), "kelbrin-win32-"));
+  process.env.KELBRIN_HOME = home;
 });
 
 afterEach(() => {
   if (previousHome === undefined) {
-    delete process.env.HOLLR_HOME;
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = previousHome;
+    process.env.KELBRIN_HOME = previousHome;
   }
   rmSync(home, { recursive: true, force: true });
 });
@@ -95,13 +95,13 @@ describe("Win32Platform.voiceArgv", () => {
 
 describe("Win32Platform.notifyArgv", () => {
   it("should_read_title_and_body_from_tmp_files", () => {
-    const argv = platform().notifyArgv("hollr", "response ready") as string[];
+    const argv = platform().notifyArgv("kelbrin", "response ready") as string[];
     expect(argv.slice(0, 3)).toEqual(["powershell", "-NoProfile", "-Command"]);
     const script = argv[3] as string;
     expect(script).toContain("ToastNotificationManager");
     const paths = readAllTextPaths(script);
     expect(paths).toHaveLength(2);
-    expect(readFileSync(paths[0] as string, "utf8")).toBe("hollr");
+    expect(readFileSync(paths[0] as string, "utf8")).toBe("kelbrin");
     expect(readFileSync(paths[1] as string, "utf8")).toBe("response ready");
     for (const path of paths) {
       expect(script).toContain(`Remove-Item '${path}' -ErrorAction SilentlyContinue`);
@@ -109,7 +109,7 @@ describe("Win32Platform.notifyArgv", () => {
   });
 
   it("should_keep_notify_body_out_of_every_argv_element", () => {
-    const argv = platform().notifyArgv("hollr", INJECTION) as string[];
+    const argv = platform().notifyArgv("kelbrin", INJECTION) as string[];
     for (const element of argv) {
       expect(element).not.toContain(INJECTION);
       expect(element).not.toContain("rm -rf");

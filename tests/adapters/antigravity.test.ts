@@ -19,14 +19,14 @@ const STOP_PAYLOAD = JSON.parse(
   readFileSync(join(FIXTURES, "stop.json"), "utf8"),
 ) as Record<string, unknown>;
 
-const HOLLR_STOP_COMMAND =
-  "hollr emit --agent antigravity --event done --payload-stdin; printf '{}'";
+const KELBRIN_STOP_COMMAND =
+  "kelbrin emit --agent antigravity --event done --payload-stdin; printf '{}'";
 const LEDGER_KEY = "antigravity";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 /** `which` fake that resolves nothing (agy not on PATH). */
 const whichNone = (): string | null => null;
@@ -55,19 +55,19 @@ function readHooks(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-agy-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-agy-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -119,23 +119,23 @@ describe("antigravity.readLastResponse", () => {
 });
 
 describe("antigravity.wire", () => {
-  it("should_add_the_hollr_stop_hook_to_a_fresh_hooks_file", async () => {
+  it("should_add_the_kelbrin_stop_hook_to_a_fresh_hooks_file", async () => {
     const result = await antigravity.wire(deps());
     expect(result.changed).toBe(true);
-    expect(result.diff).toContain(HOLLR_STOP_COMMAND);
-    const hollr = readHooks().hollr as Record<string, unknown>;
-    const stop = hollr.Stop as Array<{ type: string; command: string }>;
+    expect(result.diff).toContain(KELBRIN_STOP_COMMAND);
+    const kelbrin = readHooks().kelbrin as Record<string, unknown>;
+    const stop = kelbrin.Stop as Array<{ type: string; command: string }>;
     expect(stop).toHaveLength(1);
     expect(stop[0]?.type).toBe("command");
-    expect(stop[0]?.command).toBe(HOLLR_STOP_COMMAND);
+    expect(stop[0]?.command).toBe(KELBRIN_STOP_COMMAND);
   });
 
   it("should_wire_a_command_carrying_both_the_stdout_guard_and_payload_stdin", async () => {
     await antigravity.wire(deps());
-    const hollr = readHooks().hollr as Record<string, unknown>;
-    const stop = hollr.Stop as Array<{ command: string }>;
+    const kelbrin = readHooks().kelbrin as Record<string, unknown>;
+    const stop = kelbrin.Stop as Array<{ command: string }>;
     const command = stop[0]?.command ?? "";
-    expect(command).toBe(HOLLR_STOP_COMMAND);
+    expect(command).toBe(KELBRIN_STOP_COMMAND);
     expect(command).toContain("--payload-stdin");
     expect(command).toContain("printf '{}'");
   });
@@ -154,8 +154,8 @@ describe("antigravity.wire", () => {
     await antigravity.wire(deps());
     const hooks = readHooks();
     expect(JSON.stringify(hooks["lint-checker"])).toContain("lint.sh");
-    const hollr = hooks.hollr as Record<string, unknown>;
-    expect(JSON.stringify(hollr.Stop)).toContain(HOLLR_STOP_COMMAND);
+    const kelbrin = hooks.kelbrin as Record<string, unknown>;
+    expect(JSON.stringify(kelbrin.Stop)).toContain(KELBRIN_STOP_COMMAND);
   });
 
   it("should_be_idempotent_on_a_second_wire", async () => {
@@ -163,24 +163,24 @@ describe("antigravity.wire", () => {
     const second = await antigravity.wire(deps());
     expect(second.changed).toBe(false);
     expect(second.diff).toBe("");
-    const hollr = readHooks().hollr as Record<string, unknown>;
-    expect(hollr.Stop as unknown[]).toHaveLength(1);
+    const kelbrin = readHooks().kelbrin as Record<string, unknown>;
+    expect(kelbrin.Stop as unknown[]).toHaveLength(1);
   });
 });
 
 describe("antigravity.unwire", () => {
-  it("should_unwire_only_the_hollr_stop_hook_and_keep_a_foreign_entry", async () => {
+  it("should_unwire_only_the_kelbrin_stop_hook_and_keep_a_foreign_entry", async () => {
     const testDeps = deps();
     await antigravity.wire(testDeps);
     const cfg = readHooks();
-    (cfg.hollr as { Stop: unknown[] }).Stop.push({
+    (cfg.kelbrin as { Stop: unknown[] }).Stop.push({
       type: "command",
       command: "user-stop",
     });
     writeFileSync(hooksPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
     await antigravity.unwire(testDeps);
-    const hollr = readHooks().hollr as Record<string, unknown>;
-    expect(hollr.Stop).toEqual([{ type: "command", command: "user-stop" }]);
+    const kelbrin = readHooks().kelbrin as Record<string, unknown>;
+    expect(kelbrin.Stop).toEqual([{ type: "command", command: "user-stop" }]);
   });
 
   it("should_preserve_an_unrelated_named_entry_on_unwire", async () => {
@@ -193,10 +193,10 @@ describe("antigravity.unwire", () => {
     await antigravity.unwire(deps());
     const hooks = readHooks();
     expect(JSON.stringify(hooks["lint-checker"])).toContain("lint.sh");
-    expect(hooks.hollr).toBeUndefined();
+    expect(hooks.kelbrin).toBeUndefined();
   });
 
-  it("should_leave_the_hooks_file_without_the_hollr_entry_when_wiring_created_it", async () => {
+  it("should_leave_the_hooks_file_without_the_kelbrin_entry_when_wiring_created_it", async () => {
     // unwireJsonFile is surgical: it rewrites the file's CURRENT content and
     // never tracks "did this file exist before" to delete it. A hooks.json
     // created solely by wire survives unwire as an empty JSON object.
@@ -209,6 +209,47 @@ describe("antigravity.unwire", () => {
 
   afterEach(() => {
     unwireFromLedger(LEDGER_KEY);
+  });
+});
+
+describe("antigravity hollr→kelbrin rename compat", () => {
+  const LEGACY_STOP_COMMAND =
+    "hollr emit --agent antigravity --event done --payload-stdin; printf '{}'";
+
+  function writeLegacyHooks(): void {
+    writeHooks({
+      hollr: {
+        Stop: [{ type: "command", command: LEGACY_STOP_COMMAND }],
+      },
+      "lint-checker": {
+        PreToolUse: [{ hooks: [{ type: "command", command: "lint.sh" }] }],
+      },
+    });
+  }
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+  });
+
+  it("should_replace_the_legacy_hollr_group_with_the_kelbrin_group_on_wire", async () => {
+    writeLegacyHooks();
+    await antigravity.wire(deps());
+    const hooks = readHooks();
+    expect(hooks.hollr).toBeUndefined();
+    const kelbrin = hooks.kelbrin as Record<string, unknown>;
+    expect(kelbrin.Stop).toEqual([
+      { type: "command", command: KELBRIN_STOP_COMMAND },
+    ]);
+    expect(JSON.stringify(hooks["lint-checker"])).toContain("lint.sh");
+  });
+
+  it("should_remove_the_legacy_hollr_group_on_unwire_without_rewiring", async () => {
+    writeLegacyHooks();
+    await antigravity.unwire(deps());
+    const hooks = readHooks();
+    expect(hooks.hollr).toBeUndefined();
+    expect(hooks.kelbrin).toBeUndefined();
+    expect(JSON.stringify(hooks["lint-checker"])).toContain("lint.sh");
   });
 });
 

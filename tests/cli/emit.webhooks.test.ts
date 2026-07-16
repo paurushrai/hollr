@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { encodeCwd, type WebhookTarget } from "../../src/core/config.ts";
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
 import type { EmitDeps } from "../../src/cli/emit.ts";
@@ -14,24 +14,24 @@ import { fireWebhooks } from "../../src/sinks/webhook.ts";
 const CWD = "/Users/me/dev/my-app";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
+let kelbrinHomeDir: string;
 let logPath: string;
-let prevHollrHome: string | undefined;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-seam-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  mkdirSync(hollrHomeDir, { recursive: true });
-  logPath = join(hollrHomeDir, "webhook.log");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-seam-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  logPath = join(kelbrinHomeDir, "webhook.log");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -46,7 +46,7 @@ const WEBHOOK: WebhookTarget = {
 };
 
 function configureGlobal(overrides: Record<string, unknown>): void {
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(overrides));
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(overrides));
 }
 
 function fakePlatform(): Platform {
@@ -80,7 +80,7 @@ function makeSeamDeps(fetchFn: typeof fetch): SeamHarness {
     platform: fakePlatform(),
     speak: vi.fn<(opts: SpeakSequencedOptions) => void>(),
     notify: vi.fn<(argv: string[]) => void>(),
-    webhooks: (ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => {
+    webhooks: (ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean) => {
       pending = fireWebhooks(ev, targets, { allowHttp, fetchFn: wrapped, logPath });
     },
     awaitWebhooks: () => pending,
@@ -133,7 +133,7 @@ describe("emit → webhook async seam", () => {
 
   it("should_not_fire_webhooks_for_a_muted_project", async () => {
     configureGlobal({ webhooks: [WEBHOOK], allowHttp: false });
-    const projects = join(hollrHomeDir, "projects");
+    const projects = join(kelbrinHomeDir, "projects");
     mkdirSync(projects, { recursive: true });
     writeFileSync(join(projects, `${encodeCwd(CWD)}.muted`), "");
     const fetchFn = (() =>

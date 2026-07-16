@@ -22,13 +22,13 @@ const BEFORESHELL_PAYLOAD = JSON.parse(
   readFileSync(join(FIXTURES, "beforeshell.json"), "utf8"),
 ) as Record<string, unknown>;
 
-const STOP_COMMAND = "hollr emit --agent cursor --event done --payload-stdin";
+const STOP_COMMAND = "kelbrin emit --agent cursor --event done --payload-stdin";
 const LEDGER_KEY = "cursor";
 
 let tmpRoot: string;
 let home: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 /** `which` fake that resolves nothing (cursor-agent not on PATH). */
 const whichNone = (): string | null => null;
@@ -63,19 +63,19 @@ function hookCommands(event: string): string[] {
 }
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-cursor-"));
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-cursor-"));
   home = join(tmpRoot, "home");
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
   mkdirSync(home, { recursive: true });
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -187,7 +187,7 @@ describe("cursor.wire", () => {
 });
 
 describe("cursor.unwire", () => {
-  it("should_unwire_only_hollr_stop_hook_and_keep_foreign", async () => {
+  it("should_unwire_only_kelbrin_stop_hook_and_keep_foreign", async () => {
     const testDeps = deps();
     await cursor.wire(testDeps);
     const cfg = readHooks();
@@ -231,6 +231,43 @@ describe("cursor.unwire", () => {
 
   afterEach(() => {
     unwireFromLedger(LEDGER_KEY);
+  });
+});
+
+describe("cursor hollr→kelbrin rename compat", () => {
+  const LEGACY_STOP = "hollr emit --agent cursor --event done --payload-stdin";
+
+  afterEach(() => {
+    unwireFromLedger(LEDGER_KEY);
+  });
+
+  it("should_unwire_legacy_hollr_stop_entry_and_keep_a_foreign_entry", async () => {
+    writeHooks({
+      version: 1,
+      hooks: {
+        stop: [
+          { type: "command", command: LEGACY_STOP },
+          { type: "command", command: "user-stop" },
+        ],
+      },
+    });
+    await cursor.unwire(deps());
+    const raw = readFileSync(hooksPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    expect(hookCommands("stop")).toEqual(["user-stop"]);
+  });
+
+  it("should_replace_the_legacy_hollr_stop_entry_on_wire_without_duplicating", async () => {
+    writeHooks({
+      version: 1,
+      hooks: {
+        stop: [{ type: "command", command: LEGACY_STOP }],
+      },
+    });
+    await cursor.wire(deps());
+    const raw = readFileSync(hooksPath(), "utf8");
+    expect(raw).not.toContain("hollr emit");
+    expect(hookCommands("stop")).toEqual([STOP_COMMAND]);
   });
 });
 

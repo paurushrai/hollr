@@ -13,7 +13,7 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { run } from "../../scripts/helper/play-then-say.mjs";
 
 const VOICE_PID = 4242;
-const PID_PATH = "/tmp/hollr/reading.pid";
+const PID_PATH = "/tmp/kelbrin/reading.pid";
 const SOUND_ARGV = ["afplay", "/System/Library/Sounds/Glass.aiff"];
 const VOICE_ARGV = ["say", "-v", "Alex", "-r", "200", "--", "hello"];
 

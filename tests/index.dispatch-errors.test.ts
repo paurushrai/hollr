@@ -15,21 +15,21 @@ vi.mock("../src/core/router.ts", () => ({
 import { main, run } from "../src/index.ts";
 
 let tmpRoot: string;
-let prevHollrHome: string | undefined;
+let prevKelbrinHome: string | undefined;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-dispatch-"));
-  prevHollrHome = process.env.HOLLR_HOME;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-dispatch-"));
+  prevKelbrinHome = process.env.KELBRIN_HOME;
   vi.spyOn(process.stdout, "write").mockReturnValue(true);
   stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -39,12 +39,12 @@ function stderrText(): string {
   return stderrSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("");
 }
 
-/** Point HOLLR_HOME at a regular file so `mkdirSync("<file>/projects")` fails
+/** Point KELBRIN_HOME at a regular file so `mkdirSync("<file>/projects")` fails
  *  with ENOTDIR — deterministic, no injected fs needed. */
 function useUnwritableHome(): void {
   const blocker = join(tmpRoot, "home-is-a-file");
   writeFileSync(blocker, "");
-  process.env.HOLLR_HOME = blocker;
+  process.env.KELBRIN_HOME = blocker;
 }
 
 describe("dispatch: non-emit failures surface (not silent exit 0)", () => {
@@ -56,7 +56,7 @@ describe("dispatch: non-emit failures surface (not silent exit 0)", () => {
     expect(code).not.toBe(0);
     expect(code).toBe(1);
     expect(stderrText().length).toBeGreaterThan(0);
-    expect(stderrText()).toContain("hollr:");
+    expect(stderrText()).toContain("kelbrin:");
     expect(stderrText()).toContain("mute flag");
   });
 
@@ -69,7 +69,7 @@ describe("dispatch: non-emit failures surface (not silent exit 0)", () => {
 describe("dispatch: emit still exits 0 when it throws internally", () => {
   beforeEach(() => {
     // Fresh, empty (unmuted) home so the router IS reached — and it throws.
-    process.env.HOLLR_HOME = join(tmpRoot, ".config", "hollr");
+    process.env.KELBRIN_HOME = join(tmpRoot, ".config", "kelbrin");
   });
 
   it("should_exit_0_from_run_when_route_throws", async () => {

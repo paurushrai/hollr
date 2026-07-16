@@ -9,30 +9,30 @@ import { runMute, setProjectState } from "../../src/cli/mute.ts";
 const CWD = "/Users/me/dev/my-app";
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 let stdout: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-mute-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-mute-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
   stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
 function flagPath(cwd: string): string {
-  return join(hollrHomeDir, "projects", `${encodeCwd(cwd)}.muted`);
+  return join(kelbrinHomeDir, "projects", `${encodeCwd(cwd)}.muted`);
 }
 
 function lastLine(): string {
@@ -46,11 +46,11 @@ describe("runMute", () => {
     expect(code).toBe(0);
     expect(isMuted(CWD)).toBe(true);
     expect(existsSync(flagPath(CWD))).toBe(true);
-    expect(lastLine()).toContain("hollr: off for my app");
+    expect(lastLine()).toContain("kelbrin: off for my app");
   });
 
   it("should_create_projects_dir_when_absent_on", () => {
-    expect(existsSync(join(hollrHomeDir, "projects"))).toBe(false);
+    expect(existsSync(join(kelbrinHomeDir, "projects"))).toBe(false);
     runMute(["on"], CWD);
     expect(existsSync(flagPath(CWD))).toBe(true);
   });
@@ -60,7 +60,7 @@ describe("runMute", () => {
     const code = runMute(["off"], CWD);
     expect(code).toBe(0);
     expect(isMuted(CWD)).toBe(false);
-    expect(lastLine()).toContain("hollr: on for my app");
+    expect(lastLine()).toContain("kelbrin: on for my app");
   });
 
   it("should_not_throw_when_off_and_flag_absent", () => {
@@ -70,24 +70,24 @@ describe("runMute", () => {
     }).not.toThrow();
     expect(code).toBe(0);
     expect(isMuted(CWD)).toBe(false);
-    expect(lastLine()).toContain("hollr: on for");
+    expect(lastLine()).toContain("kelbrin: on for");
   });
 
   it("should_toggle_on_then_off_when_bare", () => {
     runMute([], CWD);
     expect(isMuted(CWD)).toBe(true);
-    expect(lastLine()).toContain("hollr: off for");
+    expect(lastLine()).toContain("kelbrin: off for");
 
     runMute([], CWD);
     expect(isMuted(CWD)).toBe(false);
-    expect(lastLine()).toContain("hollr: on for");
+    expect(lastLine()).toContain("kelbrin: on for");
   });
 });
 
 const ON_OFF_CWD = "/tmp/proj";
 
 function projectFlagPath(cwd: string, suffix: string): string {
-  return join(hollrHomeDir, "projects", `${encodeCwd(cwd)}${suffix}`);
+  return join(kelbrinHomeDir, "projects", `${encodeCwd(cwd)}${suffix}`);
 }
 
 describe("setProjectState", () => {

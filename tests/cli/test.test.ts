@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WebhookTarget } from "../../src/core/config.ts";
-import type { HollrEvent } from "../../src/core/events.ts";
+import type { KelbrinEvent } from "../../src/core/events.ts";
 import { projectLabel } from "../../src/core/events.ts";
 import type { Platform } from "../../src/platform/index.ts";
 import type { SpeakSequencedOptions } from "../../src/platform/sequencer.ts";
@@ -14,21 +14,21 @@ import { runTest } from "../../src/cli/test.ts";
 const NOW = new Date("2026-07-11T12:00:00.000Z");
 
 let tmpRoot: string;
-let hollrHomeDir: string;
-let prevHollrHome: string | undefined;
+let kelbrinHomeDir: string;
+let prevKelbrinHome: string | undefined;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), "hollr-test-"));
-  hollrHomeDir = join(tmpRoot, ".config", "hollr");
-  prevHollrHome = process.env.HOLLR_HOME;
-  process.env.HOLLR_HOME = hollrHomeDir;
+  tmpRoot = mkdtempSync(join(tmpdir(), "kelbrin-test-"));
+  kelbrinHomeDir = join(tmpRoot, ".config", "kelbrin");
+  prevKelbrinHome = process.env.KELBRIN_HOME;
+  process.env.KELBRIN_HOME = kelbrinHomeDir;
 });
 
 afterEach(() => {
-  if (prevHollrHome === undefined) {
-    delete process.env.HOLLR_HOME;
+  if (prevKelbrinHome === undefined) {
+    delete process.env.KELBRIN_HOME;
   } else {
-    process.env.HOLLR_HOME = prevHollrHome;
+    process.env.KELBRIN_HOME = prevKelbrinHome;
   }
   rmSync(tmpRoot, { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -36,8 +36,8 @@ afterEach(() => {
 
 /** Writing a global config makes every cwd "configured" (isConfigured true). */
 function configureGlobal(overrides: Record<string, unknown> = {}): void {
-  mkdirSync(hollrHomeDir, { recursive: true });
-  writeFileSync(join(hollrHomeDir, "config.json"), JSON.stringify(overrides));
+  mkdirSync(kelbrinHomeDir, { recursive: true });
+  writeFileSync(join(kelbrinHomeDir, "config.json"), JSON.stringify(overrides));
 }
 
 function fakePlatform(): Platform {
@@ -65,7 +65,7 @@ function makeDeps(): Harness {
   const speak = vi.fn<(opts: SpeakSequencedOptions) => void>();
   const notify = vi.fn<(argv: string[]) => void>();
   const webhooks =
-    vi.fn<(ev: HollrEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
+    vi.fn<(ev: KelbrinEvent, targets: WebhookTarget[], allowHttp: boolean) => void>();
   const out = vi.fn<(text: string) => void>();
   const deps: TestDeps = {
     cwd: process.cwd(),
@@ -90,13 +90,13 @@ function outText(out: ReturnType<typeof vi.fn>): string {
 }
 
 describe("runTest default (live local check)", () => {
-  it("should_drive_local_sinks_with_the_hollr_done_line_and_not_fire_webhooks", async () => {
+  it("should_drive_local_sinks_with_the_kelbrin_done_line_and_not_fire_webhooks", async () => {
     configureGlobal();
     const { deps, speak, notify, webhooks } = makeDeps();
     const code = await runTest([], deps, NOW);
     expect(code).toBe(0);
     expect(spokenText(speak)).toBe(
-      `hollr response is ready in ${projectLabel(process.cwd())}`,
+      `kelbrin response is ready in ${projectLabel(process.cwd())}`,
     );
     expect(notify).toHaveBeenCalledTimes(1);
     expect(webhooks).not.toHaveBeenCalled();
@@ -107,12 +107,12 @@ describe("runTest default (live local check)", () => {
     const { deps } = makeDeps();
     await runTest([], deps, NOW);
     const line = readEventsLog();
-    expect(line).toContain("hollr-test done");
+    expect(line).toContain("kelbrin-test done");
   });
 });
 
 function readEventsLog(): string {
-  return readFileSync(join(hollrHomeDir, "events.log"), "utf8").trim();
+  return readFileSync(join(kelbrinHomeDir, "events.log"), "utf8").trim();
 }
 
 describe("runTest --webhook", () => {
@@ -139,9 +139,9 @@ describe("runTest --show-payload", () => {
     const payload = JSON.parse(outText(out)) as Record<string, unknown>;
     expect(payload).toMatchObject({
       v: 1,
-      agent: "hollr-test",
+      agent: "kelbrin-test",
       event: "done",
-      summary: "hollr test",
+      summary: "kelbrin test",
       project: projectLabel(process.cwd()),
     });
     expect(payload.ts).toBe(NOW.toISOString());
